@@ -1,0 +1,42 @@
+{
+  "name": "audio-library-cleanup",
+  "version": "1.0.0",
+  "description": "A tool for cleaning up audio file libraries",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "cleanup": "ts-node src/scripts/cleanupAll.ts",
+    "cleanup:duplicates": "ts-node src/scripts/cleanupDuplicates.ts",
+    "cleanup:mp3-flac": "ts-node src/scripts/cleanupMp3Flac.ts",
+    "cleanup:empty-dirs": "ts-node src/scripts/cleanupEmptyDirs.ts",
+    "cleanup:directories": "ts-node src/scripts/cleanupDirectories.ts",
+    "semantic-release": "semantic-release",
+    "prepare": "husky"
+  },
+  "keywords": [
+    "audio",
+    "cleanup",
+    "mp3",
+    "flac"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^22.15.17",
+    "commander": "^13.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "husky": "^9.1.7",
+    "semantic-release": "^22.0.12"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jamiebclark/audio-library-cleanup.git"
+  }
+}

@@ -1,0 +1,20 @@
+# Set default behavior to automatically normalize line endings
+* text=auto
+
+# JavaScript and TypeScript files
+*.js text eol=lf
+*.ts text eol=lf
+*.json text eol=lf
+
+# Markdown files
+*.md text eol=lf
+
+# Explicitly declare binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mp3 binary
+*.flac binary
+*.wav binary 
