@@ -15,7 +15,23 @@ yarn add audio-library-cleanup
 
 ## Configuration
 
-You can set your audio library path as an environment variable to avoid specifying it in every command:
+### Using .env File (Recommended)
+
+Create a `.env` file in the root directory with your configuration:
+
+```
+# Path to your audio library directory
+AUDIO_LIBRARY_PATH=/path/to/your/audio/library
+
+# Whether to run in dry-run mode by default (true/false)
+DRY_RUN=false
+```
+
+See `ENV-SETUP.md` for more detailed instructions.
+
+### Using Environment Variables
+
+Alternatively, you can set your audio library path as an environment variable:
 
 ```bash
 # Linux/macOS
