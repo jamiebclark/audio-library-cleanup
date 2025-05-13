@@ -1,60 +1,135 @@
-import { Command } from 'commander';
-import { getAudioDirectory } from '../utils/config';
+import * as path from 'path';
 import {
   AudioFile,
   deleteFile,
-  getAudioFilesInDirectory
+  getAudioFilesInDirectory,
+  renameFile
 } from '../utils/fileUtils';
-import { getFileName, readableFileSize } from '../utils/formatUtils';
+import { readableFileSize } from '../utils/formatUtils';
+import { log } from '../utils/logger';
+import { ProgressBar, Spinner, generateSpinner } from '../utils/progress';
 
-export async function cleanupDuplicates(directory: string, dryRun: boolean) {
+export async function cleanupDuplicates(
+  directory: string,
+  dryRun: boolean,
+  options?: {
+    spinner?: Spinner
+  }
+) {
+  const scanningSpinner = generateSpinner('Scanning for audio files', options?.spinner);
+
   const files = getAudioFilesInDirectory(directory);
-  const exactDuplicates = new Map<string, AudioFile[]>();
 
-  // Group files by their base name (without extension)
+  scanningSpinner.succeed(`Found ${files.length} audio files`);
+  log.info(`Found ${files.length} audio files`);
+
+  // Group files by their parent directory path and then by base name
+  const filesByDirectory = new Map<string, Map<string, AudioFile[]>>();
+
+  const groupingSpinner = generateSpinner('Grouping files by directory and name', options?.spinner);
+
   files.forEach(file => {
+    const parentDir = path.dirname(file.path);
     const baseName = file.name.replace(/\(\d+\)$/, '').trim();
-    if (!exactDuplicates.has(baseName)) {
-      exactDuplicates.set(baseName, []);
+
+    // Create map for this directory if it doesn't exist
+    if (!filesByDirectory.has(parentDir)) {
+      filesByDirectory.set(parentDir, new Map<string, AudioFile[]>());
     }
-    exactDuplicates.get(baseName)!.push(file);
+
+    const dirMap = filesByDirectory.get(parentDir)!;
+
+    // Create array for this base name if it doesn't exist
+    if (!dirMap.has(baseName)) {
+      dirMap.set(baseName, []);
+    }
+
+    // Add this file to the array for its directory and base name
+    dirMap.get(baseName)!.push(file);
   });
 
-  // Process exact duplicates
-  for (const [baseName, fileGroup] of exactDuplicates) {
-    if (fileGroup.length > 1) {
-      console.log(`\nFound duplicates for: ${baseName}`);
+  groupingSpinner.succeed(`Grouped files across ${filesByDirectory.size} directories`);
+  log.info(`Grouped files across ${filesByDirectory.size} directories`);
 
-      // Sort by size (largest first)
-      fileGroup.sort((a, b) => b.size - a.size);
+  let totalDuplicatesFound = 0;
+  let dirsWithDuplicates = 0;
 
-      // Keep the largest file, delete others
-      const [keepFile, ...deleteFiles] = fileGroup;
+  // Create progress bar for processing directories
+  const progressBar = new ProgressBar(filesByDirectory.size, 0, 'Checking directories: [{bar}] {percentage}% | {value}/{total} | {task}');
+  let processedDirs = 0;
 
-      console.log(`Keeping: ${getFileName(keepFile.path)} (${readableFileSize(keepFile.size)})`);
+  // Process exact duplicates by directory
+  for (const [dirPath, dirMap] of filesByDirectory) {
+    const relativeDirPath = path.relative(directory, dirPath);
+    let dirDuplicatesFound = false;
 
-      for (const file of deleteFiles) {
-        console.log(`Would delete: ${getFileName(file.path)} (${readableFileSize(file.size)})`);
-        if (!dryRun) {
-          deleteFile(file.path);
-          console.log('Deleted.');
+    // Update progress bar
+    processedDirs++;
+    progressBar.update(processedDirs, { task: `Checking ${relativeDirPath || '.'}` });
+
+    for (const [baseName, fileGroup] of dirMap) {
+      if (fileGroup.length > 1) {
+        if (!dirDuplicatesFound) {
+          dirDuplicatesFound = true;
+          dirsWithDuplicates++;
+        }
+
+        log.subHeader(`Found duplicates in: ${relativeDirPath || '.'}`);
+        log.info(`Duplicates for: ${baseName}`);
+        totalDuplicatesFound++;
+
+        // Sort by size (largest first)
+        fileGroup.sort((a, b) => b.size - a.size);
+
+        // Keep the largest file, delete others
+        const [keepFile, ...deleteFiles] = fileGroup;
+
+        log.success(`Keeping: ${path.basename(keepFile.path)} (${readableFileSize(keepFile.size)})`);
+
+        for (const file of deleteFiles) {
+          if (dryRun) {
+            log.dryRun(`Would delete: ${path.basename(file.path)} (${readableFileSize(file.size)})`);
+          } else {
+            const deleteSpinner = new Spinner(`Deleting: ${path.basename(file.path)} (${readableFileSize(file.size)})`);
+            deleteSpinner.start();
+            deleteFile(file.path);
+            deleteSpinner.succeed('Deleted');
+            log.info(`Deleted: ${path.basename(file.path)} (${readableFileSize(file.size)})`);
+          }
+        }
+
+        // Check if the kept file has a numeric suffix and rename it AFTER deleting other files
+        const numericSuffixMatch = keepFile.name.match(/(.+)\s+\((\d+)\)$/);
+        if (numericSuffixMatch) {
+          const baseName = numericSuffixMatch[1];
+          const newFilePath = path.join(path.dirname(keepFile.path), `${baseName}${path.extname(keepFile.path)}`);
+
+          if (dryRun) {
+            log.dryRun(`Would rename: ${path.basename(keepFile.path)} → ${path.basename(newFilePath)}`);
+          } else {
+            const renameSpinner = new Spinner(`Renaming: ${path.basename(keepFile.path)} → ${path.basename(newFilePath)}`);
+            renameSpinner.start();
+            if (renameFile(keepFile.path, newFilePath)) {
+              renameSpinner.succeed('Renamed');
+              log.info(`Renamed: ${path.basename(keepFile.path)} → ${path.basename(newFilePath)}`);
+            } else {
+              renameSpinner.fail('Failed to rename');
+              log.error(`Failed to rename: ${path.basename(keepFile.path)} → ${path.basename(newFilePath)}`);
+            }
+          }
         }
       }
     }
   }
-}
 
-const program = new Command();
+  // Stop the progress bar
+  progressBar.stop();
 
-program
-  .name('cleanup-duplicates')
-  .description('Clean up duplicate audio files in a directory')
-  .argument('[directory]', 'directory to scan (defaults to AUDIO_LIBRARY_PATH environment variable)')
-  .option('-d, --dry-run', 'show what would be deleted without actually deleting')
-  .action(async (directory: string | undefined, options: { dryRun: boolean }) => {
-    const audioDir = getAudioDirectory(directory);
-    console.log(`Using directory: ${audioDir}\n`);
-    await cleanupDuplicates(audioDir, options.dryRun);
-  });
-
-program.parse(); 
+  if (totalDuplicatesFound === 0) {
+    log.info('No duplicates found.');
+    log.console.info('No duplicates found.');
+  } else {
+    log.result(`Found ${totalDuplicatesFound} duplicate groups across ${dirsWithDuplicates} directories.`);
+    log.console.result(`Found ${totalDuplicatesFound} duplicate groups across ${dirsWithDuplicates} directories.`);
+  }
+} 

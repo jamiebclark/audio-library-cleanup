@@ -5,11 +5,11 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "cleanup": "ts-node src/scripts/cleanupAll.ts",
-    "cleanup:duplicates": "ts-node src/scripts/cleanupDuplicates.ts",
-    "cleanup:mp3-flac": "ts-node src/scripts/cleanupMp3Flac.ts",
-    "cleanup:empty-dirs": "ts-node src/scripts/cleanupEmptyDirs.ts",
-    "cleanup:directories": "ts-node src/scripts/cleanupDirectories.ts",
+    "cleanup": "ts-node src/index.ts audio-cleanup",
+    "cleanup:duplicates": "ts-node src/index.ts cleanup-duplicates",
+    "cleanup:mp3-flac": "ts-node src/index.ts cleanup-mp3-flac",
+    "cleanup:empty-dirs": "ts-node src/index.ts cleanup-empty-dirs",
+    "cleanup:directories": "ts-node src/index.ts cleanup-directories",
     "semantic-release": "semantic-release"
   },
   "keywords": [
@@ -22,14 +22,19 @@
   "license": "ISC",
   "dependencies": {
     "@types/node": "^22.15.17",
+    "chalk": "4.1.2",
+    "cli-progress": "^3.12.0",
     "commander": "^13.1.0",
     "dotenv": "^16.5.0",
+    "ora": "5.4.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "winston": "^3.17.0"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
+    "@types/cli-progress": "^3.11.6",
     "semantic-release": "^22.0.12"
   },
   "repository": {

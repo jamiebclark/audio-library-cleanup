@@ -1,51 +1,99 @@
-import { Command } from 'commander';
-import { getAudioDirectory } from '../utils/config';
+import * as path from 'path';
 import { AudioFile, deleteFile, getAudioFilesInDirectory } from '../utils/fileUtils';
-import { getFileName, readableFileSize } from '../utils/formatUtils';
+import { readableFileSize } from '../utils/formatUtils';
+import { log } from '../utils/logger';
+import { ProgressBar, Spinner, generateSpinner } from '../utils/progress';
 
-export async function cleanupMp3Flac(directory: string, dryRun: boolean) {
+export async function cleanupMp3Flac(
+  directory: string,
+  dryRun: boolean,
+  options?: {
+    spinner?: Spinner
+  }
+) {
+  const scanningSpinner = generateSpinner('Scanning for audio files', options?.spinner);
+
   const files = getAudioFilesInDirectory(directory);
-  const fileGroups = new Map<string, AudioFile[]>();
 
-  // Group files by their base name (without extension)
+  scanningSpinner.succeed(`Found ${files.length} audio files`);
+
+  // Group files by their parent directory path and then by base name
+  const groupingSpinner = generateSpinner('Grouping files by directory and name', options?.spinner);
+
+  const filesByDirectory = new Map<string, Map<string, AudioFile[]>>();
+
   files.forEach(file => {
+    const parentDir = path.dirname(file.path);
     const baseName = file.name.replace(/\(\d+\)$/, '').trim();
-    if (!fileGroups.has(baseName)) {
-      fileGroups.set(baseName, []);
+
+    // Create map for this directory if it doesn't exist
+    if (!filesByDirectory.has(parentDir)) {
+      filesByDirectory.set(parentDir, new Map<string, AudioFile[]>());
     }
-    fileGroups.get(baseName)!.push(file);
+
+    const dirMap = filesByDirectory.get(parentDir)!;
+
+    // Create array for this base name if it doesn't exist
+    if (!dirMap.has(baseName)) {
+      dirMap.set(baseName, []);
+    }
+
+    // Add this file to the array for its directory and base name
+    dirMap.get(baseName)!.push(file);
   });
 
-  // Process each group
-  for (const [baseName, fileGroup] of fileGroups) {
-    const hasFlac = fileGroup.some(file => file.extension === '.flac');
-    const mp3Files = fileGroup.filter(file => file.extension === '.mp3');
+  groupingSpinner.succeed(`Grouped files across ${filesByDirectory.size} directories`);
 
-    if (hasFlac && mp3Files.length > 0) {
-      console.log(`\nFound FLAC and MP3 versions for: ${baseName}`);
+  let totalMatchesFound = 0;
+  let dirsWithMatches = 0;
 
-      for (const mp3File of mp3Files) {
-        console.log(`Would delete MP3: ${getFileName(mp3File.path)} (${readableFileSize(mp3File.size)})`);
-        if (!dryRun) {
-          deleteFile(mp3File.path);
-          console.log('Deleted.');
+  // Create progress bar for processing directories
+  const progressBar = new ProgressBar(filesByDirectory.size, 0, 'Checking directories: [{bar}] {percentage}% | {value}/{total} | {task}');
+  let processedDirs = 0;
+
+  // Process files by directory
+  for (const [dirPath, dirMap] of filesByDirectory) {
+    const relativeDirPath = path.relative(directory, dirPath);
+    let dirMatchesFound = false;
+
+    // Update progress bar
+    processedDirs++;
+    progressBar.update(processedDirs, { task: `Checking ${relativeDirPath || '.'}` });
+
+    for (const [baseName, fileGroup] of dirMap) {
+      const hasFlac = fileGroup.some(file => file.extension === '.flac');
+      const mp3Files = fileGroup.filter(file => file.extension === '.mp3');
+
+      if (hasFlac && mp3Files.length > 0) {
+        if (!dirMatchesFound) {
+          dirMatchesFound = true;
+          dirsWithMatches++;
+          log.subHeader(`Found MP3/FLAC matches in: ${relativeDirPath || '.'}`);
+        }
+
+        log.info(`MP3/FLAC versions for: ${baseName}`);
+        totalMatchesFound++;
+
+        for (const mp3File of mp3Files) {
+          if (dryRun) {
+            log.dryRun(`Would delete MP3: ${path.basename(mp3File.path)} (${readableFileSize(mp3File.size)})`);
+          } else {
+            const deleteSpinner = new Spinner(`Deleting MP3: ${path.basename(mp3File.path)} (${readableFileSize(mp3File.size)})`);
+            deleteSpinner.start();
+            deleteFile(mp3File.path);
+            deleteSpinner.succeed('Deleted');
+          }
         }
       }
     }
   }
-}
 
-const program = new Command();
+  // Stop the progress bar
+  progressBar.stop();
 
-program
-  .name('cleanup-mp3-flac')
-  .description('Remove MP3 files when FLAC versions exist')
-  .argument('[directory]', 'directory to scan (defaults to AUDIO_LIBRARY_PATH environment variable)')
-  .option('-d, --dry-run', 'show what would be deleted without actually deleting')
-  .action(async (directory: string | undefined, options: { dryRun: boolean }) => {
-    const audioDir = getAudioDirectory(directory);
-    console.log(`Using directory: ${audioDir}\n`);
-    await cleanupMp3Flac(audioDir, options.dryRun);
-  });
-
-program.parse(); 
+  if (totalMatchesFound === 0) {
+    log.info('No MP3/FLAC matches found.');
+  } else {
+    log.result(`Found ${totalMatchesFound} MP3/FLAC matches across ${dirsWithMatches} directories.`);
+  }
+} 

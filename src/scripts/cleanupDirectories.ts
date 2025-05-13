@@ -1,80 +1,154 @@
-import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getAudioDirectory } from '../utils/config';
 import {
   DirectoryInfo,
+  countItems,
+  createProgressTracker,
   getDirectoryLastModified,
   getSubfolderCount,
   hasAccents,
-  normalizeForFuzzyMatching
+  normalizeForFuzzyMatching,
+  traverseDirectory
 } from '../utils/fileUtils';
+import { log } from '../utils/logger';
+import { Spinner, generateSpinner } from '../utils/progress';
 
-export async function cleanupDirectories(directory: string, dryRun: boolean) {
-  console.log('Looking for similar directory names...');
+/**
+ * Get the containing album directory for a path (typically 2 levels up from leaf directories)
+ * 
+ * For example:
+ * M:/Music/Library/Artist/Album/Artwork -> M:/Music/Library/Artist/Album
+ * M:/Music/Library/Artist/Album -> M:/Music/Library/Artist
+ */
+function getAlbumContext(filePath: string, baseDir: string): string {
+  // Get path relative to the base directory
+  const relativePath = path.relative(baseDir, filePath);
+  // Split into components
+  const parts = relativePath.split(path.sep);
+
+  // If we're at least 2 levels deep, use parent directory as context
+  if (parts.length >= 2) {
+    // Return the parent path (e.g., "Artist/Album" for "Artist/Album/Artwork")
+    return parts.slice(0, -1).join(path.sep);
+  }
+
+  // If we're just 1 level deep, use that as context
+  return parts.length === 1 ? parts[0] : '';
+}
+
+export async function cleanupDirectories(
+  directory: string,
+  dryRun: boolean,
+  options?: {
+    spinner?: Spinner,
+    createProgressTracker?: (total: number, directory: string) => { updateProgress: (path: string) => void, clearProgress: () => void }
+  }
+) {
+  log.info('Looking for similar directory names...');
 
   // Get all directories
   const directories: DirectoryInfo[] = [];
 
-  function scanDirectories(dir: string) {
-    const items = fs.readdirSync(dir);
+  // Add spinner for counting items
+  const spinner = generateSpinner('Counting items to process', options?.spinner);
 
-    for (const item of items) {
-      const fullPath = path.join(dir, item);
-      const stat = fs.statSync(fullPath);
+  const totalItems = countItems(directory);
 
-      if (stat.isDirectory()) {
-        directories.push({
-          path: fullPath,
-          name: item,
-          subfolderCount: getSubfolderCount(fullPath),
-          lastModified: getDirectoryLastModified(fullPath),
-          hasAccents: hasAccents(item)
-        });
+  // Update spinner with count result
+  spinner.succeed(`Found ${totalItems} items to process`);
 
-        scanDirectories(fullPath);
-      }
-    }
+  const { updateProgress, clearProgress } = options?.createProgressTracker
+    ? options.createProgressTracker(totalItems, directory)
+    : createProgressTracker(totalItems, directory);
+
+  try {
+    traverseDirectory(
+      directory,
+      (itemPath, isDirectory) => {
+        if (isDirectory) {
+          directories.push({
+            path: itemPath,
+            name: path.basename(itemPath),
+            subfolderCount: getSubfolderCount(itemPath),
+            lastModified: getDirectoryLastModified(itemPath),
+            hasAccents: hasAccents(path.basename(itemPath))
+          });
+        }
+      },
+      { progressTracker: { updateProgress } }
+    );
+  } catch (error) {
+    log.error('Error scanning directories:', error);
+    process.exit(1);
   }
 
-  scanDirectories(directory);
+  clearProgress();
+  log.success('Scanning complete!');
 
-  // Group directories by normalized name for fuzzy matching
-  const fuzzyGroups = new Map<string, DirectoryInfo[]>();
+  // Group directories by context (album folder) and then by normalized name
+  const contextGroups = new Map<string, Map<string, DirectoryInfo[]>>();
 
   directories.forEach(dir => {
-    const normalizedName = normalizeForFuzzyMatching(dir.name);
-    if (!fuzzyGroups.has(normalizedName)) {
-      fuzzyGroups.set(normalizedName, []);
+    // Get the directory's context (album directory)
+    const context = getAlbumContext(dir.path, directory);
+
+    // Skip the root level directories
+    if (!context) return;
+
+    // Create map for this context if it doesn't exist
+    if (!contextGroups.has(context)) {
+      contextGroups.set(context, new Map<string, DirectoryInfo[]>());
     }
-    fuzzyGroups.get(normalizedName)!.push(dir);
+
+    const dirMap = contextGroups.get(context)!;
+    const normalizedName = normalizeForFuzzyMatching(dir.name);
+
+    // Create array for this normalized name if it doesn't exist
+    if (!dirMap.has(normalizedName)) {
+      dirMap.set(normalizedName, []);
+    }
+
+    // Add this directory to the array for its context and normalized name
+    dirMap.get(normalizedName)!.push(dir);
   });
 
-  // Process fuzzy duplicate groups
+  // Process fuzzy duplicate groups by context
   let directoriesProcessed = 0;
 
-  for (const [normalizedName, dirGroup] of fuzzyGroups) {
-    if (dirGroup.length > 1) {
-      console.log(`\nFound fuzzy matches for: ${normalizedName}`);
+  for (const [context, dirMap] of contextGroups) {
+    // Check if any group in this context has duplicates
+    let hasMatchesInContext = false;
 
-      dirGroup.forEach(dir => {
-        console.log(`- ${dir.name} (${dir.path})`);
-        console.log(`  Subfolders: ${dir.subfolderCount}, Modified: ${dir.lastModified.toISOString()}, Has accents: ${dir.hasAccents}`);
-      });
+    for (const [normalizedName, dirGroup] of dirMap) {
+      if (dirGroup.length > 1) {
+        if (!hasMatchesInContext) {
+          log.subHeader(`Checking context: ${context}`);
+          hasMatchesInContext = true;
+        }
 
-      // Apply priority rules to select which directory to keep
-      const dirToKeep = selectDirectoryToKeep(dirGroup);
-      console.log(`\nKeeping: ${dirToKeep.name} (${dirToKeep.path})`);
+        log.info(`Found fuzzy matches for: ${normalizedName}`);
 
-      // Move content from other dirs to the kept dir and delete them
-      for (const dir of dirGroup) {
-        if (dir.path !== dirToKeep.path) {
-          console.log(`Would merge and delete: ${dir.name} (${dir.path})`);
+        dirGroup.forEach(dir => {
+          log.info(`- ${dir.name} (${dir.path})`);
+          log.info(`  Subfolders: ${dir.subfolderCount}, Modified: ${dir.lastModified.toISOString()}, Has accents: ${dir.hasAccents}`);
+        });
 
-          if (!dryRun) {
-            mergeDirectories(dir.path, dirToKeep.path);
-            console.log('Merged and deleted.');
-            directoriesProcessed++;
+        // Apply priority rules to select which directory to keep
+        const dirToKeep = selectDirectoryToKeep(dirGroup);
+        log.success(`Keeping: ${dirToKeep.name} (${dirToKeep.path})`);
+
+        // Move content from other dirs to the kept dir and delete them
+        for (const dir of dirGroup) {
+          if (dir.path !== dirToKeep.path) {
+            if (dryRun) {
+              log.dryRun(`Would merge and delete: ${dir.name} (${dir.path})`);
+            } else {
+              const mergeSpinner = new Spinner(`Merging: ${dir.name} (${dir.path})`);
+              mergeSpinner.start();
+              mergeDirectories(dir.path, dirToKeep.path);
+              mergeSpinner.succeed('Merged and deleted');
+              directoriesProcessed++;
+            }
           }
         }
       }
@@ -82,11 +156,9 @@ export async function cleanupDirectories(directory: string, dryRun: boolean) {
   }
 
   if (directoriesProcessed > 0) {
-    console.log(`\nMerged ${directoriesProcessed} directories.`);
-  } else if (fuzzyGroups.size > 0) {
-    console.log(`\nNo directories needed to be merged ${dryRun ? '(dry run)' : ''}.`);
+    log.result(`Merged ${directoriesProcessed} directories.`);
   } else {
-    console.log('\nNo similar directories found.');
+    log.info('No similar directories found that needed to be merged.');
   }
 }
 
@@ -149,19 +221,4 @@ function mergeDirectories(sourcePath: string, targetPath: string): void {
 
   // Delete the source directory after merging
   fs.rmdirSync(sourcePath, { recursive: true });
-}
-
-const program = new Command();
-
-program
-  .name('cleanup-directories')
-  .description('Clean up directories with similar names using fuzzy matching')
-  .argument('[directory]', 'directory to scan (defaults to AUDIO_LIBRARY_PATH environment variable)')
-  .option('-d, --dry-run', 'show what would be merged without actually merging')
-  .action(async (directory: string | undefined, options: { dryRun: boolean }) => {
-    const audioDir = getAudioDirectory(directory);
-    console.log(`Using directory: ${audioDir}\n`);
-    await cleanupDirectories(audioDir, options.dryRun);
-  });
-
-program.parse(); 
+} 

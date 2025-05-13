@@ -1,0 +1,32 @@
+import { Command } from 'commander';
+import { cleanupDirectories } from '../scripts/cleanupDirectories';
+import { getAudioDirectory } from '../utils/config';
+import { createProgressTracker } from '../utils/fileUtils';
+import { Spinner, generateSpinner } from '../utils/progress';
+
+const program = new Command();
+
+program
+  .name('cleanup-directories')
+  .description('Clean up directories with similar names using fuzzy matching')
+  .argument('[directory]', 'directory to scan (defaults to AUDIO_LIBRARY_PATH environment variable)')
+  .option('-d, --dry-run', 'show what would be merged without actually merging')
+  .action(async (directory: string | undefined, options: { dryRun: boolean }) => {
+    const audioDir = getAudioDirectory(directory);
+
+    const setupSpinner = generateSpinner(`Setting up for directory: ${audioDir}`);
+
+    setTimeout(() => {
+      setupSpinner.succeed(`Ready to scan directory: ${audioDir}`);
+      const spinner = new Spinner('Audio Library Cleanup');
+      const createReusableProgressTracker = (total: number, directory: string) => {
+        return createProgressTracker(total, directory);
+      };
+      cleanupDirectories(audioDir, options.dryRun, {
+        spinner,
+        createProgressTracker: createReusableProgressTracker
+      });
+    }, 500);
+  });
+
+export default program; 

@@ -89,6 +89,35 @@ yarn cleanup:directories [directory] [-d]
 
 All commands support the `-d` or `--dry-run` option to preview changes without making them.
 
+## Skipping Problematic Paths
+
+You can specify paths to skip during cleanup operations using a JSON configuration file. This is useful for:
+
+- Directories with case sensitivity issues on Windows
+- Directories that contain special characters or non-standard encodings
+- Any path you want to exclude from automatic cleaning
+
+### Using a Skip Paths Configuration File
+
+Create a `.audio-library-skip-paths.json` file in your audio library root directory or specify a custom path with the `--skip-config` option:
+
+```bash
+yarn cleanup:empty-dirs --skip-config path/to/my-skip-paths.json
+```
+
+The configuration file should contain a list of paths to skip:
+
+```json
+{
+  "paths": [
+    "Artist/Album with issues",
+    "Another Artist/Problem Album"
+  ]
+}
+```
+
+Paths can be relative to your audio library root or absolute paths. The tool will automatically detect case sensitivity conflicts and skip problematic paths, even without manual configuration.
+
 ## Example
 
 ```bash
@@ -142,3 +171,34 @@ All content from merged directories is combined, with larger files being preserv
 ## License
 
 ISC 
+
+## CLI Improvements
+
+The command-line interface has been enhanced with the following features:
+
+- Colorized output for better readability
+- Spinner indicators for long-running tasks
+- Progress bars for tracking operation progress
+- Clear status messages for various operations
+
+This makes the tool more user-friendly by providing:
+
+- Visual indicators of progress
+- Clear differentiation between information, warnings, and errors
+- Better visibility of what's happening during lengthy operations
+
+### Example Output
+
+```
+=== Checking for duplicate files ===
+✓ Found 173 audio files
+✓ Grouped files across 24 directories
+Checking directories: [███████████████████] 100% | 24/24 | Checking Artist/Album
+
+Found duplicates in: Artist/Album
+INFO: Duplicates for: Song Title
+✓ Keeping: Song Title.flac (24.5 MB)
+[DRY RUN] Would delete: Song Title.mp3 (8.2 MB)
+
+✓ Found 12 duplicate groups across 5 directories
+``` 
