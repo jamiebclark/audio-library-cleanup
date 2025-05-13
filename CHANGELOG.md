@@ -1,3 +1,11 @@
+# [1.1.0](https://github.com/jamiebclark/audio-library-cleanup/compare/v1.0.0...v1.1.0) (2025-05-13)
+
+
+### Features
+
+* add dotenv for environment variable management ([b5237ce](https://github.com/jamiebclark/audio-library-cleanup/commit/b5237ce894f877324b4a01deb68007c38075f8ec))
+* enhance audio cleanup tool with new features and improvements ([710161a](https://github.com/jamiebclark/audio-library-cleanup/commit/710161a72b7b4e8e795f0737ebd862dbc6faa7ec))
+
 # 1.0.0 (2025-05-12)
 
 
