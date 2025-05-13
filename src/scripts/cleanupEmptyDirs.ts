@@ -6,16 +6,17 @@ import { getPathsToSkip } from '../utils/config';
 import {
   AUDIO_EXTENSIONS,
   countItems,
-  createProgressTracker,
   deleteDirectory,
+  generateProgressTracker,
   getCorrectCasePath,
   isAudioFile,
   isDirectoryEmpty,
+  ProgressTracker,
   traverseDirectory
 } from '../utils/fileUtils';
 import { getFileName } from '../utils/formatUtils';
 import { log } from '../utils/logger';
-import { Spinner, generateSpinner } from '../utils/progress';
+import { generateSpinner, Spinner } from '../utils/progress';
 
 const execPromise = promisify(exec);
 
@@ -283,13 +284,16 @@ async function thoroughCheckDirectoryForAudio(dirPath: string): Promise<boolean>
   }
 }
 
+interface CleanupOptions {
+  force?: boolean;
+  spinner?: Spinner;
+  progressTracker?: ProgressTracker;
+}
+
 export async function cleanupEmptyDirs(
   directory: string,
   dryRun: boolean,
-  options?: {
-    spinner?: Spinner,
-    createProgressTracker?: (total: number, directory: string) => { updateProgress: (path: string) => void, clearProgress: () => void }
-  }
+  options: CleanupOptions = {}
 ) {
   const emptyDirs: string[] = [];
   const noAudioDirs: string[] = [];
@@ -300,15 +304,15 @@ export async function cleanupEmptyDirs(
   // Use provided spinner or create a new one
   const countingSpinner = generateSpinner('Counting items to process', options?.spinner);
 
-  const totalItems = countItems(directory);
+  const totalItems = countItems(directory, true);
 
   // Update spinner with count result
-  countingSpinner.succeed(`Found ${totalItems} items to process`);
+  countingSpinner.succeed(`Found ${totalItems} directories to search for empty directories`);
+
 
   // Use provided progress tracker or create a new one
-  const { updateProgress, clearProgress } = options?.createProgressTracker
-    ? options.createProgressTracker(totalItems, directory)
-    : createProgressTracker(totalItems, directory);
+  const progressTracker = generateProgressTracker(totalItems, directory, options?.progressTracker);
+
 
   // Get user-configured paths to skip from config
   const configuredSkipPaths = getPathsToSkip(directory);
@@ -335,10 +339,10 @@ export async function cleanupEmptyDirs(
         caseSensitivityMap.set(lowerPath, (caseSensitivityMap.get(lowerPath) || 0) + 1);
       }
     },
-    { progressTracker: { updateProgress } }
+    { progressTracker }
   );
 
-  clearProgress();
+  progressTracker.clear();
   log.success('Scanning complete!');
 
   // Identify directories with potential case sensitivity issues
@@ -362,8 +366,12 @@ export async function cleanupEmptyDirs(
   // This helps prevent duplicate processing when case sensitivity issues exist
   const processedDirLowerCase = new Set<string>();
 
+  progressTracker.setTotalItems(dirsToCheck.length);
+
   for (const dirPath of dirsToCheck) {
     try {
+      progressTracker.update(dirPath);
+
       // Log progress every 100 directories
       dirCheckedCount++;
       if (dirCheckedCount % 100 === 0) {
@@ -627,4 +635,7 @@ export async function cleanupEmptyDirs(
   if (emptyDirs.length === 0 && noAudioDirs.length === 0) {
     log.info('No empty directories or directories without audio files found.');
   }
+
+  // Clear progress at the end
+  progressTracker.clear();
 } 

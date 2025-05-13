@@ -4,7 +4,7 @@ import { cleanupDuplicates } from '../scripts/cleanupDuplicates';
 import { cleanupEmptyDirs } from '../scripts/cleanupEmptyDirs';
 import { cleanupMp3Flac } from '../scripts/cleanupMp3Flac';
 import { getAudioDirectory } from '../utils/config';
-import { createProgressTracker } from '../utils/fileUtils';
+import { ProgressTracker } from '../utils/fileUtils';
 import { log } from '../utils/logger';
 import { Spinner, generateSpinner } from '../utils/progress';
 
@@ -44,6 +44,9 @@ program
     // Main function to run all cleanup tasks
     async function runCleanupTasks() {
       cleanupInProgress = true;
+      // Create a shared spinner and progress tracker to reuse across all cleanup functions
+      const spinner = new Spinner('Audio Library Cleanup');
+      const progressTracker = new ProgressTracker(0, audioDir);
 
       try {
         // Show dry run warning if applicable
@@ -51,17 +54,10 @@ program
           log.warning('Running in DRY RUN mode. No files will be modified.');
         }
 
-        // Create a shared spinner and progress tracker factory to reuse across all cleanup functions
-        const spinner = new Spinner('Audio Library Cleanup');
-
-        // Create a factory function for progress trackers
-        const createReusableProgressTracker = (total: number, directory: string) => {
-          return createProgressTracker(total, directory);
-        };
 
         if (!options.skipDuplicates) {
           log.header('Checking for duplicate files');
-          await cleanupDuplicates(audioDir, options.dryRun, { spinner });
+          await cleanupDuplicates(audioDir, options.dryRun, { spinner, progressTracker });
         }
 
         if (!options.skipMp3Flac) {
@@ -73,7 +69,7 @@ program
           log.header('Checking for similar directory names');
           await cleanupDirectories(audioDir, options.dryRun, {
             spinner,
-            createProgressTracker: createReusableProgressTracker
+            progressTracker
           });
         }
 
@@ -81,7 +77,7 @@ program
           log.header('Checking for empty directories');
           await cleanupEmptyDirs(audioDir, options.dryRun, {
             spinner,
-            createProgressTracker: createReusableProgressTracker
+            progressTracker
           });
         }
 
@@ -93,6 +89,8 @@ program
           log.error('An unknown error occurred during cleanup');
         }
       } finally {
+        spinner.succeed('Successfully completed cleanup');
+        progressTracker.clear();
         cleanupInProgress = false;
       }
     }

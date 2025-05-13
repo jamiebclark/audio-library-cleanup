@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { cleanupEmptyDirs } from '../scripts/cleanupEmptyDirs';
 import { getAudioDirectory } from '../utils/config';
-import { createProgressTracker } from '../utils/fileUtils';
+import { ProgressTracker } from '../utils/fileUtils';
 import { log } from '../utils/logger';
 import { Spinner } from '../utils/progress';
 
@@ -24,16 +24,12 @@ program
 
     // Create reusable spinner and progress tracker
     const spinner = new Spinner('Processing');
-
-    // Create a factory function for progress trackers
-    const createReusableProgressTracker = (total: number, directory: string) => {
-      return createProgressTracker(total, directory);
-    };
+    const progressTracker = new ProgressTracker(0, audioDir);
 
     // Pass the shared components to the cleanup function
     await cleanupEmptyDirs(audioDir, options.dryRun, {
       spinner,
-      createProgressTracker: createReusableProgressTracker
+      progressTracker
     });
   });
 

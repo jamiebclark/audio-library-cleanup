@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { cleanupDirectories } from '../scripts/cleanupDirectories';
 import { getAudioDirectory } from '../utils/config';
-import { createProgressTracker } from '../utils/fileUtils';
+import { ProgressTracker } from '../utils/fileUtils';
 import { Spinner, generateSpinner } from '../utils/progress';
 
 const program = new Command();
@@ -19,12 +19,10 @@ program
     setTimeout(() => {
       setupSpinner.succeed(`Ready to scan directory: ${audioDir}`);
       const spinner = new Spinner('Audio Library Cleanup');
-      const createReusableProgressTracker = (total: number, directory: string) => {
-        return createProgressTracker(total, directory);
-      };
+      const progressTracker = new ProgressTracker(0, audioDir);
       cleanupDirectories(audioDir, options.dryRun, {
         spinner,
-        createProgressTracker: createReusableProgressTracker
+        progressTracker
       });
     }, 500);
   });

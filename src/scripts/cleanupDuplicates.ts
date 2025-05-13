@@ -2,23 +2,26 @@ import * as path from 'path';
 import {
   AudioFile,
   deleteFile,
+  generateProgressTracker,
   getAudioFilesInDirectory,
+  ProgressTracker,
   renameFile
 } from '../utils/fileUtils';
 import { readableFileSize } from '../utils/formatUtils';
 import { log } from '../utils/logger';
-import { ProgressBar, Spinner, generateSpinner } from '../utils/progress';
+import { generateSpinner, Spinner } from '../utils/progress';
 
 export async function cleanupDuplicates(
   directory: string,
   dryRun: boolean,
   options?: {
-    spinner?: Spinner
+    spinner?: Spinner,
+    progressTracker?: ProgressTracker
   }
 ) {
   const scanningSpinner = generateSpinner('Scanning for audio files', options?.spinner);
 
-  const files = getAudioFilesInDirectory(directory);
+  const files = getAudioFilesInDirectory(directory, options?.progressTracker);
 
   scanningSpinner.succeed(`Found ${files.length} audio files`);
   log.info(`Found ${files.length} audio files`);
@@ -55,7 +58,7 @@ export async function cleanupDuplicates(
   let dirsWithDuplicates = 0;
 
   // Create progress bar for processing directories
-  const progressBar = new ProgressBar(filesByDirectory.size, 0, 'Checking directories: [{bar}] {percentage}% | {value}/{total} | {task}');
+  const progressTracker = generateProgressTracker(filesByDirectory.size, directory, options?.progressTracker);
   let processedDirs = 0;
 
   // Process exact duplicates by directory
@@ -65,7 +68,7 @@ export async function cleanupDuplicates(
 
     // Update progress bar
     processedDirs++;
-    progressBar.update(processedDirs, { task: `Checking ${relativeDirPath || '.'}` });
+    progressTracker.update(relativeDirPath);
 
     for (const [baseName, fileGroup] of dirMap) {
       if (fileGroup.length > 1) {
@@ -123,7 +126,7 @@ export async function cleanupDuplicates(
   }
 
   // Stop the progress bar
-  progressBar.stop();
+  progressTracker.clear();
 
   if (totalDuplicatesFound === 0) {
     log.info('No duplicates found.');

@@ -30,16 +30,18 @@ export function getFileSize(filePath: string): number {
 }
 
 // Get total count of items to process (for progress calculation)
-export function countItems(dirPath: string): number {
+export function countItems(dirPath: string, onlyDirectories: boolean = false): number {
   let count = 0;
   try {
     const items = fs.readdirSync(dirPath);
-    count += items.length;
+    if (!onlyDirectories || fs.statSync(dirPath).isDirectory()) {
+      count += items.length;
+    }
 
     for (const item of items) {
       const fullPath = path.join(dirPath, item);
       if (fs.statSync(fullPath).isDirectory()) {
-        count += countItems(fullPath);
+        count += countItems(fullPath, onlyDirectories);
       }
     }
   } catch (error) {
@@ -59,7 +61,7 @@ export function traverseDirectory(
   dirPath: string,
   callback: (itemPath: string, isDirectory: boolean, stat: fs.Stats) => void,
   options?: {
-    progressTracker?: { updateProgress: (currentPath: string) => void }
+    progressTracker?: ProgressTracker
   }
 ) {
   // Try to get correct case path if the directory doesn't exist as provided
@@ -77,9 +79,8 @@ export function traverseDirectory(
   }
 
   // Update progress if tracker is provided
-  if (options?.progressTracker) {
-    options.progressTracker.updateProgress(dirPath);
-  }
+  options?.progressTracker?.update(dirPath);
+
 
   try {
     // Use withFileTypes to preserve original case
@@ -103,19 +104,65 @@ export function traverseDirectory(
   }
 }
 
-export function getAudioFilesInDirectory(dirPath: string): AudioFile[] {
+export function generateProgressTracker(totalItems: number, basePath: string, existingTracker?: ProgressTracker): ProgressTracker {
+  if (existingTracker) {
+    existingTracker.clear();
+    existingTracker.setTotalItems(totalItems);
+    existingTracker.setBasePath(basePath);
+    return existingTracker;
+  }
+  return new ProgressTracker(totalItems, basePath);
+}
+export class ProgressTracker {
+  private processedItems: number = 0;
+  private progressBar!: ProgressBar;
+  private basePath: string;
+
+  constructor(totalItems: number, basePath: string) {
+    this.basePath = basePath;
+    this.setTotalItems(totalItems);
+  }
+
+  update(currentPath: string): void {
+    this.processedItems++;
+    // Use relative path for cleaner output
+    const relativePath = path.relative(this.basePath, currentPath) || '.';
+    // Update the progress bar with current count and path
+    this.progressBar.update(this.processedItems, { task: relativePath });
+  }
+
+  clear(): void {
+    // Stop the progress bar (cleans up display)
+    this.progressBar.stop();
+    this.processedItems = 0;
+  }
+
+  setTotalItems(totalItems: number): void {
+    this.progressBar = new ProgressBar(
+      totalItems,
+      this.processedItems,
+      'Scanning: [{bar}] {percentage}% | {value}/{total} | {task}'
+    );
+  }
+
+  setBasePath(basePath: string): void {
+    this.basePath = basePath;
+  }
+}
+
+export function getAudioFilesInDirectory(dirPath: string, useProgressTracker?: ProgressTracker): AudioFile[] {
   const files: AudioFile[] = [];
 
   // Add spinner for counting items
   const countingSpinner = new Spinner('Counting items to process');
   countingSpinner.start();
 
-  const totalItems = countItems(dirPath);
+  const totalItems = countItems(dirPath, true);
 
   // Update spinner with count result
-  countingSpinner.succeed(`Found ${totalItems} items to process`);
+  countingSpinner.succeed(`Found ${totalItems} directories to traverse, looking for audio files`);
 
-  const { updateProgress, clearProgress } = createProgressTracker(totalItems, dirPath);
+  const progressTracker = generateProgressTracker(totalItems, dirPath, useProgressTracker);
 
   traverseDirectory(
     dirPath,
@@ -130,10 +177,10 @@ export function getAudioFilesInDirectory(dirPath: string): AudioFile[] {
         });
       }
     },
-    { progressTracker: { updateProgress } }
+    { progressTracker }
   );
 
-  clearProgress();
+  progressTracker.clear();
   log.success('Scanning complete!');
   return files;
 }
@@ -336,31 +383,4 @@ export function getCorrectCasePath(pathToCheck: string): string {
   }
 
   return currentPath;
-}
-
-// Create a progress tracker that returns functions to update and clear progress
-export function createProgressTracker(totalItems: number, basePath: string) {
-  let processedItems = 0;
-
-  // Create a progress bar for scanning
-  const progressBar = new ProgressBar(
-    totalItems,
-    0,
-    'Scanning: [{bar}] {percentage}% | {value}/{total} | {task}'
-  );
-
-  const updateProgress = (currentPath: string) => {
-    processedItems++;
-    // Use relative path for cleaner output
-    const relativePath = path.relative(basePath, currentPath) || '.';
-    // Update the progress bar with current count and path
-    progressBar.update(processedItems, { task: relativePath });
-  };
-
-  const clearProgress = () => {
-    // Stop the progress bar (cleans up display)
-    progressBar.stop();
-  };
-
-  return { updateProgress, clearProgress };
 } 

@@ -2,8 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   DirectoryInfo,
+  ProgressTracker,
   countItems,
-  createProgressTracker,
+  generateProgressTracker,
   getDirectoryLastModified,
   getSubfolderCount,
   hasAccents,
@@ -36,13 +37,16 @@ function getAlbumContext(filePath: string, baseDir: string): string {
   return parts.length === 1 ? parts[0] : '';
 }
 
+interface CleanupOptions {
+  force?: boolean;
+  spinner?: Spinner;
+  progressTracker?: ProgressTracker;
+}
+
 export async function cleanupDirectories(
   directory: string,
   dryRun: boolean,
-  options?: {
-    spinner?: Spinner,
-    createProgressTracker?: (total: number, directory: string) => { updateProgress: (path: string) => void, clearProgress: () => void }
-  }
+  options: CleanupOptions = {}
 ) {
   log.info('Looking for similar directory names...');
 
@@ -52,14 +56,13 @@ export async function cleanupDirectories(
   // Add spinner for counting items
   const spinner = generateSpinner('Counting items to process', options?.spinner);
 
-  const totalItems = countItems(directory);
+  const totalItems = countItems(directory, true);
 
   // Update spinner with count result
-  spinner.succeed(`Found ${totalItems} items to process`);
+  spinner.succeed(`Found ${totalItems} directories to cleanup`);
 
-  const { updateProgress, clearProgress } = options?.createProgressTracker
-    ? options.createProgressTracker(totalItems, directory)
-    : createProgressTracker(totalItems, directory);
+  // Use provided progress tracker or create a new one
+  const progressTracker = generateProgressTracker(totalItems, directory, options?.progressTracker);
 
   try {
     traverseDirectory(
@@ -75,14 +78,14 @@ export async function cleanupDirectories(
           });
         }
       },
-      { progressTracker: { updateProgress } }
+      { progressTracker }
     );
   } catch (error) {
     log.error('Error scanning directories:', error);
     process.exit(1);
   }
 
-  clearProgress();
+  progressTracker.clear();
   log.success('Scanning complete!');
 
   // Group directories by context (album folder) and then by normalized name
