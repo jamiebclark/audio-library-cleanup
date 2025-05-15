@@ -5,7 +5,8 @@ import {
   generateProgressTracker,
   getAudioFilesInDirectory,
   ProgressTracker,
-  renameFile
+  renameFile,
+  writeScriptResults
 } from '../utils/fileUtils';
 import { readableFileSize } from '../utils/formatUtils';
 import { log } from '../utils/logger';
@@ -19,12 +20,11 @@ export async function cleanupDuplicates(
     progressTracker?: ProgressTracker
   }
 ) {
+  log.console.header('Cleanup duplicates');
+
   const scanningSpinner = generateSpinner('Scanning for audio files', options?.spinner);
-
-  const files = getAudioFilesInDirectory(directory, options?.progressTracker);
-
-  scanningSpinner.succeed(`Found ${files.length} audio files`);
-  log.info(`Found ${files.length} audio files`);
+  const files = getAudioFilesInDirectory(directory, options?.progressTracker, scanningSpinner);
+  log.info(`Cleanup duplicates: Found ${files.length} audio files`);
 
   // Group files by their parent directory path and then by base name
   const filesByDirectory = new Map<string, Map<string, AudioFile[]>>();
@@ -56,6 +56,8 @@ export async function cleanupDuplicates(
 
   let totalDuplicatesFound = 0;
   let dirsWithDuplicates = 0;
+  let duplicateFilesDeleted = 0;
+  let filesRenamed = 0;
 
   // Create progress bar for processing directories
   const progressTracker = generateProgressTracker(filesByDirectory.size, directory, options?.progressTracker);
@@ -92,12 +94,14 @@ export async function cleanupDuplicates(
         for (const file of deleteFiles) {
           if (dryRun) {
             log.dryRun(`Would delete: ${path.basename(file.path)} (${readableFileSize(file.size)})`);
+            duplicateFilesDeleted++;
           } else {
             const deleteSpinner = new Spinner(`Deleting: ${path.basename(file.path)} (${readableFileSize(file.size)})`);
             deleteSpinner.start();
             deleteFile(file.path);
             deleteSpinner.succeed('Deleted');
             log.info(`Deleted: ${path.basename(file.path)} (${readableFileSize(file.size)})`);
+            duplicateFilesDeleted++;
           }
         }
 
@@ -109,12 +113,14 @@ export async function cleanupDuplicates(
 
           if (dryRun) {
             log.dryRun(`Would rename: ${path.basename(keepFile.path)} → ${path.basename(newFilePath)}`);
+            filesRenamed++;
           } else {
             const renameSpinner = new Spinner(`Renaming: ${path.basename(keepFile.path)} → ${path.basename(newFilePath)}`);
             renameSpinner.start();
             if (renameFile(keepFile.path, newFilePath)) {
               renameSpinner.succeed('Renamed');
               log.info(`Renamed: ${path.basename(keepFile.path)} → ${path.basename(newFilePath)}`);
+              filesRenamed++;
             } else {
               renameSpinner.fail('Failed to rename');
               log.error(`Failed to rename: ${path.basename(keepFile.path)} → ${path.basename(newFilePath)}`);
@@ -129,10 +135,14 @@ export async function cleanupDuplicates(
   progressTracker.clear();
 
   if (totalDuplicatesFound === 0) {
-    log.info('No duplicates found.');
     log.console.info('No duplicates found.');
   } else {
-    log.result(`Found ${totalDuplicatesFound} duplicate groups across ${dirsWithDuplicates} directories.`);
     log.console.result(`Found ${totalDuplicatesFound} duplicate groups across ${dirsWithDuplicates} directories.`);
   }
+
+  // Write results to JSON file
+  writeScriptResults('cleanupDuplicates.ts', {
+    duplicateFilesDeleted,
+    filesRenamed
+  });
 } 

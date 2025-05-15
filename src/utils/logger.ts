@@ -29,7 +29,7 @@ const logger = winston.createLogger({
 });
 
 // Export log functions with console color for progress bars only
-export const log = {
+const baseLog = {
   debug: (message: string) => {
     logger.debug(message);
   },
@@ -60,22 +60,30 @@ export const log = {
   },
   result: (message: string) => {
     logger.info(`RESULT: ${message}`);
-  },
-
-  // Console methods for progress bars and spinners (these still go to console)
-  console: {
-    debug: (message: string) => console.log(chalk.gray(`DEBUG: ${message}`)),
-    info: (message: string) => console.log(chalk.blue(`INFO: ${message}`)),
-    success: (message: string) => console.log(chalk.green(`✓ ${message}`)),
-    warning: (message: string) => console.log(chalk.yellow(`WARNING: ${message}`)),
-    warn: (message: string) => console.log(chalk.yellow(`WARNING: ${message}`)),
-    error: (message: string, err?: any) => {
-      console.log(chalk.red(`ERROR: ${message}`));
-      if (err) console.error(err);
-    },
-    header: (message: string) => console.log(chalk.bold.blue(`\n=== ${message} ===`)),
-    subHeader: (message: string) => console.log(chalk.bold.cyan(`\n${message}`)),
-    dryRun: (message: string) => console.log(chalk.magenta(`[DRY RUN] ${message}`)),
-    result: (message: string) => console.log(chalk.green(`✓ ${message}`)),
   }
-}; 
+} as const;
+
+function consoleLog(key: keyof typeof baseLog, message: string, formattedMessage: string) {
+  console.log(formattedMessage);
+  baseLog[key](message);
+}
+
+// Console methods for progress bars and spinners (these still go to console)
+const outputConsole = {
+  debug: (message: string) => consoleLog('debug', message, chalk.gray(`DEBUG: ${message}`)),
+  info: (message: string) => consoleLog('info', message, chalk.blue(`INFO: ${message}`)),
+  success: (message: string) => consoleLog('success', message, chalk.green(`✓ ${message}`)),
+  warning: (message: string) => consoleLog('warning', message, chalk.yellow(`WARNING: ${message}`)),
+  warn: (message: string) => consoleLog('warn', message, chalk.yellow(`WARNING: ${message}`)),
+  error: (message: string, err?: any) => {
+    consoleLog('error', message, chalk.red(`ERROR: ${message}`));
+    if (err) console.error(err);
+  },
+  header: (message: string) => consoleLog('header', message, chalk.bold.blue(`\n=== ${message} ===`)),
+  subHeader: (message: string) => consoleLog('subHeader', message, chalk.bold.cyan(`\n${message}`)),
+  dryRun: (message: string) => consoleLog('dryRun', message, chalk.magenta(`[DRY RUN] ${message}`)),
+  result: (message: string) => consoleLog('result', message, chalk.green(`✓ ${message}`)),
+} as const;
+
+
+export const log = { ...baseLog, console: outputConsole };

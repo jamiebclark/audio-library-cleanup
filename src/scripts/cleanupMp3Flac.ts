@@ -1,21 +1,19 @@
 import * as path from 'path';
-import { AudioFile, deleteFile, getAudioFilesInDirectory } from '../utils/fileUtils';
+import { AudioFile, deleteFile, getAudioFilesInDirectory, ProgressTracker, writeScriptResults } from '../utils/fileUtils';
 import { readableFileSize } from '../utils/formatUtils';
 import { log } from '../utils/logger';
-import { ProgressBar, Spinner, generateSpinner } from '../utils/progress';
+import { generateSpinner, ProgressBar, Spinner } from '../utils/progress';
 
 export async function cleanupMp3Flac(
   directory: string,
   dryRun: boolean,
   options?: {
-    spinner?: Spinner
+    spinner?: Spinner,
+    progressTracker?: ProgressTracker
   }
 ) {
   const scanningSpinner = generateSpinner('Scanning for audio files', options?.spinner);
-
-  const files = getAudioFilesInDirectory(directory);
-
-  scanningSpinner.succeed(`Found ${files.length} audio files`);
+  const files = getAudioFilesInDirectory(directory, options?.progressTracker, scanningSpinner);
 
   // Group files by their parent directory path and then by base name
   const groupingSpinner = generateSpinner('Grouping files by directory and name', options?.spinner);
@@ -46,6 +44,7 @@ export async function cleanupMp3Flac(
 
   let totalMatchesFound = 0;
   let dirsWithMatches = 0;
+  let changesCount = 0;
 
   // Create progress bar for processing directories
   const progressBar = new ProgressBar(filesByDirectory.size, 0, 'Checking directories: [{bar}] {percentage}% | {value}/{total} | {task}');
@@ -77,11 +76,13 @@ export async function cleanupMp3Flac(
         for (const mp3File of mp3Files) {
           if (dryRun) {
             log.dryRun(`Would delete MP3: ${path.basename(mp3File.path)} (${readableFileSize(mp3File.size)})`);
+            changesCount++;
           } else {
             const deleteSpinner = new Spinner(`Deleting MP3: ${path.basename(mp3File.path)} (${readableFileSize(mp3File.size)})`);
             deleteSpinner.start();
             deleteFile(mp3File.path);
             deleteSpinner.succeed('Deleted');
+            changesCount++;
           }
         }
       }
@@ -92,8 +93,11 @@ export async function cleanupMp3Flac(
   progressBar.stop();
 
   if (totalMatchesFound === 0) {
-    log.info('No MP3/FLAC matches found.');
+    log.console.info('No MP3/FLAC matches found.');
   } else {
-    log.result(`Found ${totalMatchesFound} MP3/FLAC matches across ${dirsWithMatches} directories.`);
+    log.console.result(`Found ${totalMatchesFound} MP3/FLAC matches across ${dirsWithMatches} directories.`);
   }
+
+  // Write results to JSON file
+  writeScriptResults('cleanupMp3Flac.ts', { mp3FilesDeleted: changesCount });
 } 

@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { log } from './logger';
-import { ProgressBar, Spinner } from './progress';
+import { generateSpinner, ProgressBar, Spinner } from './progress';
 
 export interface AudioFile {
   path: string;
@@ -31,10 +31,13 @@ export function getFileSize(filePath: string): number {
 
 // Get total count of items to process (for progress calculation)
 export function countItems(dirPath: string, onlyDirectories: boolean = false): number {
+  const isDirectory = fs.statSync(dirPath).isDirectory();
   let count = 0;
   try {
     const items = fs.readdirSync(dirPath);
-    if (!onlyDirectories || fs.statSync(dirPath).isDirectory()) {
+    if (onlyDirectories) {
+      count += isDirectory ? 1 : 0;
+    } else {
       count += items.length;
     }
 
@@ -61,7 +64,8 @@ export function traverseDirectory(
   dirPath: string,
   callback: (itemPath: string, isDirectory: boolean, stat: fs.Stats) => void,
   options?: {
-    progressTracker?: ProgressTracker
+    progressTracker?: ProgressTracker,
+    countDirectories?: boolean
   }
 ) {
   // Try to get correct case path if the directory doesn't exist as provided
@@ -91,8 +95,13 @@ export function traverseDirectory(
       const stat = fs.statSync(fullPath);
       const isDirectory = entry.isDirectory();
 
+
       // Call the callback with the item
       callback(fullPath, isDirectory, stat);
+
+      if (!options?.countDirectories || isDirectory) {
+        options?.progressTracker?.update(fullPath);
+      }
 
       // Recursively traverse subdirectories
       if (isDirectory) {
@@ -150,17 +159,17 @@ export class ProgressTracker {
   }
 }
 
-export function getAudioFilesInDirectory(dirPath: string, useProgressTracker?: ProgressTracker): AudioFile[] {
+export function getAudioFilesInDirectory(dirPath: string, useProgressTracker?: ProgressTracker, useSpinner?: Spinner): AudioFile[] {
   const files: AudioFile[] = [];
 
   // Add spinner for counting items
-  const countingSpinner = new Spinner('Counting items to process');
+  const countingSpinner = generateSpinner('Counting items to process', useSpinner);
   countingSpinner.start();
 
-  const totalItems = countItems(dirPath, true);
+  const totalItems = countItems(dirPath, false);
 
   // Update spinner with count result
-  countingSpinner.succeed(`Found ${totalItems} directories to traverse, looking for audio files`);
+  countingSpinner.succeed(`Get audio files: Found ${totalItems} files in directory, looking for audio files`);
 
   const progressTracker = generateProgressTracker(totalItems, dirPath, useProgressTracker);
 
@@ -180,6 +189,7 @@ export function getAudioFilesInDirectory(dirPath: string, useProgressTracker?: P
     { progressTracker }
   );
 
+  countingSpinner.succeed(`Found ${files.length} audio files`);
   progressTracker.clear();
   log.success('Scanning complete!');
   return files;
@@ -383,4 +393,71 @@ export function getCorrectCasePath(pathToCheck: string): string {
   }
 
   return currentPath;
-} 
+}
+
+export function renameDirectory(oldPath: string, newPath: string): boolean {
+  try {
+    fs.renameSync(oldPath, newPath);
+    return true;
+  } catch (error) {
+    log.error(`Error renaming directory from ${oldPath} to ${newPath}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Finds case-insensitive matching siblings for a directory
+ * @param dirPath The directory path to check
+ * @returns Array of sibling paths that match case-insensitively (empty if no matches)
+ */
+export function findCaseInsensitiveSiblings(dirPath: string): string[] {
+  const dirName = path.basename(dirPath);
+  const parentDir = path.dirname(dirPath);
+  const siblings: string[] = [];
+
+  try {
+    const entries = fs.readdirSync(parentDir, { withFileTypes: true });
+
+    // Find directories that match case-insensitively but not exactly
+    for (const entry of entries) {
+      if (entry.isDirectory() &&
+        entry.name.toLowerCase() === dirName.toLowerCase() &&
+        entry.name !== dirName) {
+        siblings.push(path.join(parentDir, entry.name));
+      }
+    }
+  } catch (err) {
+    log.error(`Error finding case-insensitive siblings for ${dirPath}:`, err);
+  }
+
+  return siblings;
+}
+
+/**
+ * Checks if a directory is truly empty (no files or subdirectories)
+ * @param dirPath Directory to check
+ * @returns true if directory is completely empty
+ */
+export function isDirectoryTrulyEmpty(dirPath: string): boolean {
+  try {
+    const entries = fs.readdirSync(dirPath);
+    return entries.length === 0;
+  } catch (err) {
+    log.error(`Error checking if directory is truly empty: ${dirPath}`, err);
+    return false;
+  }
+}
+
+export function writeScriptResults(scriptName: string, resultsData: Record<string, number>): void {
+  const outputDir = path.join('output');
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  // Get the filename from the scriptName (e.g. cleanupDirectories.ts -> cleanupDirectories)
+  const baseName = path.basename(scriptName, '.ts');
+  const outputFileName = `${baseName}.json`;
+  const outputFilePath = path.join(outputDir, outputFileName);
+  fs.writeFileSync(outputFilePath, JSON.stringify(resultsData, null, 2));
+  log.info(`Results saved to ${outputFilePath}`);
+}

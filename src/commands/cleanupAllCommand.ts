@@ -62,7 +62,7 @@ program
 
         if (!options.skipMp3Flac) {
           log.header('Checking for MP3/FLAC duplicates');
-          await cleanupMp3Flac(audioDir, options.dryRun, { spinner });
+          await cleanupMp3Flac(audioDir, options.dryRun, { spinner, progressTracker });
         }
 
         if (!options.skipDirectories) {

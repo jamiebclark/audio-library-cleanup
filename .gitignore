@@ -37,4 +37,6 @@ coverage/
 
 # Semantic release
 .releaserc.yaml
-.release-notes/ 
+.release-notes/
+
+/output/ 

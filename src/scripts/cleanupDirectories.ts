@@ -9,7 +9,8 @@ import {
   getSubfolderCount,
   hasAccents,
   normalizeForFuzzyMatching,
-  traverseDirectory
+  traverseDirectory,
+  writeScriptResults
 } from '../utils/fileUtils';
 import { log } from '../utils/logger';
 import { Spinner, generateSpinner } from '../utils/progress';
@@ -54,12 +55,12 @@ export async function cleanupDirectories(
   const directories: DirectoryInfo[] = [];
 
   // Add spinner for counting items
-  const spinner = generateSpinner('Counting items to process', options?.spinner);
+  const spinner = generateSpinner('Cleanup directories: Counting items to process', options?.spinner);
 
   const totalItems = countItems(directory, true);
 
   // Update spinner with count result
-  spinner.succeed(`Found ${totalItems} directories to cleanup`);
+  spinner.succeed(`Cleanup directories: Found ${totalItems} directories to cleanup`);
 
   // Use provided progress tracker or create a new one
   const progressTracker = generateProgressTracker(totalItems, directory, options?.progressTracker);
@@ -78,7 +79,7 @@ export async function cleanupDirectories(
           });
         }
       },
-      { progressTracker }
+      { progressTracker, countDirectories: true }
     );
   } catch (error) {
     log.error('Error scanning directories:', error);
@@ -117,6 +118,7 @@ export async function cleanupDirectories(
 
   // Process fuzzy duplicate groups by context
   let directoriesProcessed = 0;
+  let changesCount = 0; // Counter for actual or potential changes
 
   for (const [context, dirMap] of contextGroups) {
     // Check if any group in this context has duplicates
@@ -145,12 +147,14 @@ export async function cleanupDirectories(
           if (dir.path !== dirToKeep.path) {
             if (dryRun) {
               log.dryRun(`Would merge and delete: ${dir.name} (${dir.path})`);
+              changesCount++; // Increment for potential change
             } else {
               const mergeSpinner = new Spinner(`Merging: ${dir.name} (${dir.path})`);
               mergeSpinner.start();
               mergeDirectories(dir.path, dirToKeep.path);
               mergeSpinner.succeed('Merged and deleted');
               directoriesProcessed++;
+              changesCount++; // Increment for actual change
             }
           }
         }
@@ -163,6 +167,9 @@ export async function cleanupDirectories(
   } else {
     log.info('No similar directories found that needed to be merged.');
   }
+
+  // Write results to JSON file using the utility function
+  writeScriptResults('cleanupDirectories.ts', { directoriesMergedOrProcessed: changesCount });
 }
 
 function selectDirectoryToKeep(dirs: DirectoryInfo[]): DirectoryInfo {
