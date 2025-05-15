@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { validateCleanupInProgress } from '../utils/cleanupState';
 import { getPathsToSkip } from '../utils/config';
 import {
   countItems,
@@ -7,20 +8,14 @@ import {
   findCaseInsensitiveSiblings,
   generateProgressTracker,
   isDirectoryTrulyEmpty,
-  ProgressTracker,
   renameDirectory,
-  traverseDirectory,
-  writeScriptResults
-} from '../utils/fileUtils';
-import { getFileName } from '../utils/formatUtils';
+  SharedCleanupOptions,
+  traverseDirectory
+} from '../utils/file';
+import { getFileName } from '../utils/format';
 import { log } from '../utils/logger';
-import { generateSpinner, Spinner } from '../utils/progress';
-
-interface CleanupOptions {
-  force?: boolean;
-  spinner?: Spinner;
-  progressTracker?: ProgressTracker;
-}
+import { generateSpinner } from '../utils/progress';
+import { writeScriptResults } from '../utils/script';
 
 /**
  * Handles checking and cleanup of directories with case-sensitivity issues
@@ -30,6 +25,7 @@ async function handleCaseSensitiveDirectory(
   dirPath: string,
   dryRun: boolean
 ): Promise<boolean> {
+  validateCleanupInProgress();
   const siblings = findCaseInsensitiveSiblings(dirPath);
   if (siblings.length === 0) return false;
 
@@ -54,6 +50,9 @@ async function handleCaseSensitiveDirectory(
     // Step 1: Rename all siblings (including original) to ensure unique names
     const allPaths = [dirPath, ...siblings];
     for (let i = 0; i < allPaths.length; i++) {
+      // Check for interruption
+      validateCleanupInProgress();
+
       const currentPath = allPaths[i];
       const currentName = path.basename(currentPath);
       const newName = `${currentName}${caseDuplicatePrefix}${i + 1}`;
@@ -79,6 +78,9 @@ async function handleCaseSensitiveDirectory(
     // Step 2: Now that all paths are unique, check for and delete empty directories
     const deletedPaths = new Set<string>();
     for (const [origPath, tempPath] of renamedPaths.entries()) {
+      // Check for interruption
+      validateCleanupInProgress();
+
       if (fs.existsSync(tempPath) && isDirectoryTrulyEmpty(tempPath)) {
         log.info(`Deleting empty directory: ${path.basename(tempPath)}`);
         deleteDirectory(tempPath);
@@ -88,6 +90,9 @@ async function handleCaseSensitiveDirectory(
 
     // Step 3: Rename remaining directories back to their original names
     for (const [origPath, tempPath] of renamedPaths.entries()) {
+      // Check for interruption
+      validateCleanupInProgress();
+
       if (!deletedPaths.has(origPath) && fs.existsSync(tempPath)) {
         log.info(`Restoring original name: ${path.basename(tempPath)} → ${path.basename(origPath)}`);
         if (!renameDirectory(tempPath, origPath)) {
@@ -115,8 +120,10 @@ async function handleCaseSensitiveDirectory(
 export async function cleanupEmptyDirs(
   directory: string,
   dryRun: boolean,
-  options: CleanupOptions = {}
+  options: SharedCleanupOptions = {}
 ) {
+  log.console.header('Cleanup empty directories');
+
   const emptyDirs: string[] = [];
   const errorDirs: string[] = [];
   const skippedDirs: Set<string> = new Set();
@@ -125,7 +132,7 @@ export async function cleanupEmptyDirs(
   // Use provided spinner or create a new one
   const countingSpinner = generateSpinner('Cleanup empty directories: Counting items to process', options?.spinner);
 
-  const totalItems = countItems(directory, true);
+  const totalItems = await countItems(directory, true);
 
   countingSpinner.succeed(`Cleanup empty directories: Found ${totalItems} directories to process`);
 
@@ -152,7 +159,8 @@ export async function cleanupEmptyDirs(
   );
 
   progressTracker.clear();
-  log.success('Initial scan complete!');
+  log.console.success('Initial scan complete!');
+  validateCleanupInProgress();
 
   // Sort by path length in descending order to check deepest directories first
   dirsToCheck.sort((a, b) => b.length - a.length);
@@ -163,6 +171,9 @@ export async function cleanupEmptyDirs(
   for (const dirPath of dirsToCheck) {
     try {
       progressTracker.update(dirPath);
+
+      // Check for interruption before processing each directory
+      validateCleanupInProgress();
 
       // Skip if this path or any parent is in the user-configured skip list
       const shouldSkipFromConfig = configuredSkipPaths.some(skipPath =>
@@ -192,6 +203,9 @@ export async function cleanupEmptyDirs(
     }
   }
 
+  // Clear progress at the end
+  progressTracker.clear();
+
   // Process empty directories
   if (emptyDirs.length > 0) {
     log.console.result(`${emptyDirs.length} empty directories found:`);
@@ -219,6 +233,8 @@ export async function cleanupEmptyDirs(
   if (skippedDirs.size > 0) {
     log.console.warn(`${skippedDirs.size} skipped directories:`);
     for (const dir of skippedDirs) {
+      // Check for interruption inside the loop
+      validateCleanupInProgress();
       log.info(`  - ${getFileName(dir)}`);
     }
   }
@@ -226,9 +242,6 @@ export async function cleanupEmptyDirs(
   if (emptyDirs.length === 0) {
     log.console.info('No empty directories found.');
   }
-
-  // Clear progress at the end
-  progressTracker.clear();
 
   writeScriptResults('cleanupEmptyDirs.ts', { emptyDirectoriesDeletedOrIdentified: changesCount });
 }

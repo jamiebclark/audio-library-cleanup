@@ -1,19 +1,25 @@
 import * as path from 'path';
-import { AudioFile, deleteFile, getAudioFilesInDirectory, ProgressTracker, writeScriptResults } from '../utils/fileUtils';
-import { readableFileSize } from '../utils/formatUtils';
+import { AudioFile, getAudioFilesInDirectory } from '../utils/audio';
+import { validateCleanupInProgress } from '../utils/cleanupState';
+import {
+  deleteFile,
+  SharedCleanupOptions
+} from '../utils/file';
+import { readableFileSize } from '../utils/format';
 import { log } from '../utils/logger';
 import { generateSpinner, ProgressBar, Spinner } from '../utils/progress';
+import { writeScriptResults } from '../utils/script';
 
 export async function cleanupMp3Flac(
   directory: string,
   dryRun: boolean,
-  options?: {
-    spinner?: Spinner,
-    progressTracker?: ProgressTracker
-  }
+  options?: SharedCleanupOptions
 ) {
+  log.console.header('Cleanup MP3/FLAC duplicates');
   const scanningSpinner = generateSpinner('Scanning for audio files', options?.spinner);
-  const files = getAudioFilesInDirectory(directory, options?.progressTracker, scanningSpinner);
+  const files = await getAudioFilesInDirectory(directory, options?.progressTracker, scanningSpinner);
+
+  validateCleanupInProgress();
 
   // Group files by their parent directory path and then by base name
   const groupingSpinner = generateSpinner('Grouping files by directory and name', options?.spinner);
@@ -21,6 +27,7 @@ export async function cleanupMp3Flac(
   const filesByDirectory = new Map<string, Map<string, AudioFile[]>>();
 
   files.forEach(file => {
+    validateCleanupInProgress();
     const parentDir = path.dirname(file.path);
     const baseName = file.name.replace(/\(\d+\)$/, '').trim();
 
@@ -52,6 +59,7 @@ export async function cleanupMp3Flac(
 
   // Process files by directory
   for (const [dirPath, dirMap] of filesByDirectory) {
+    validateCleanupInProgress();
     const relativeDirPath = path.relative(directory, dirPath);
     let dirMatchesFound = false;
 
@@ -60,6 +68,7 @@ export async function cleanupMp3Flac(
     progressBar.update(processedDirs, { task: `Checking ${relativeDirPath || '.'}` });
 
     for (const [baseName, fileGroup] of dirMap) {
+      validateCleanupInProgress();
       const hasFlac = fileGroup.some(file => file.extension === '.flac');
       const mp3Files = fileGroup.filter(file => file.extension === '.mp3');
 
@@ -74,6 +83,7 @@ export async function cleanupMp3Flac(
         totalMatchesFound++;
 
         for (const mp3File of mp3Files) {
+          validateCleanupInProgress();
           if (dryRun) {
             log.dryRun(`Would delete MP3: ${path.basename(mp3File.path)} (${readableFileSize(mp3File.size)})`);
             changesCount++;

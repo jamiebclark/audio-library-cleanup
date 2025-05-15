@@ -1,19 +1,20 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { validateCleanupInProgress } from '../utils/cleanupState';
 import {
   DirectoryInfo,
-  ProgressTracker,
+  SharedCleanupOptions,
   countItems,
   generateProgressTracker,
   getDirectoryLastModified,
   getSubfolderCount,
   hasAccents,
   normalizeForFuzzyMatching,
-  traverseDirectory,
-  writeScriptResults
-} from '../utils/fileUtils';
+  traverseDirectory
+} from '../utils/file';
 import { log } from '../utils/logger';
 import { Spinner, generateSpinner } from '../utils/progress';
+import { writeScriptResults } from '../utils/script';
 
 /**
  * Get the containing album directory for a path (typically 2 levels up from leaf directories)
@@ -38,17 +39,13 @@ function getAlbumContext(filePath: string, baseDir: string): string {
   return parts.length === 1 ? parts[0] : '';
 }
 
-interface CleanupOptions {
-  force?: boolean;
-  spinner?: Spinner;
-  progressTracker?: ProgressTracker;
-}
-
 export async function cleanupDirectories(
   directory: string,
   dryRun: boolean,
-  options: CleanupOptions = {}
+  options: SharedCleanupOptions = {}
 ) {
+  log.console.header('Cleanup similar directory names');
+
   log.info('Looking for similar directory names...');
 
   // Get all directories
@@ -57,7 +54,7 @@ export async function cleanupDirectories(
   // Add spinner for counting items
   const spinner = generateSpinner('Cleanup directories: Counting items to process', options?.spinner);
 
-  const totalItems = countItems(directory, true);
+  const totalItems = await countItems(directory, true);
 
   // Update spinner with count result
   spinner.succeed(`Cleanup directories: Found ${totalItems} directories to cleanup`);
@@ -87,12 +84,15 @@ export async function cleanupDirectories(
   }
 
   progressTracker.clear();
-  log.success('Scanning complete!');
+  log.console.success('Scanning complete!');
+
+  validateCleanupInProgress();
 
   // Group directories by context (album folder) and then by normalized name
   const contextGroups = new Map<string, Map<string, DirectoryInfo[]>>();
 
   directories.forEach(dir => {
+    validateCleanupInProgress();
     // Get the directory's context (album directory)
     const context = getAlbumContext(dir.path, directory);
 
@@ -121,10 +121,12 @@ export async function cleanupDirectories(
   let changesCount = 0; // Counter for actual or potential changes
 
   for (const [context, dirMap] of contextGroups) {
+    validateCleanupInProgress();
     // Check if any group in this context has duplicates
     let hasMatchesInContext = false;
 
     for (const [normalizedName, dirGroup] of dirMap) {
+      validateCleanupInProgress();
       if (dirGroup.length > 1) {
         if (!hasMatchesInContext) {
           log.subHeader(`Checking context: ${context}`);
@@ -134,6 +136,7 @@ export async function cleanupDirectories(
         log.info(`Found fuzzy matches for: ${normalizedName}`);
 
         dirGroup.forEach(dir => {
+          validateCleanupInProgress();
           log.info(`- ${dir.name} (${dir.path})`);
           log.info(`  Subfolders: ${dir.subfolderCount}, Modified: ${dir.lastModified.toISOString()}, Has accents: ${dir.hasAccents}`);
         });
@@ -144,6 +147,7 @@ export async function cleanupDirectories(
 
         // Move content from other dirs to the kept dir and delete them
         for (const dir of dirGroup) {
+          validateCleanupInProgress();
           if (dir.path !== dirToKeep.path) {
             if (dryRun) {
               log.dryRun(`Would merge and delete: ${dir.name} (${dir.path})`);
@@ -162,10 +166,10 @@ export async function cleanupDirectories(
     }
   }
 
-  if (directoriesProcessed > 0) {
-    log.result(`Merged ${directoriesProcessed} directories.`);
+  if (changesCount > 0) {
+    log.console.result(`Merged ${changesCount} directories.`);
   } else {
-    log.info('No similar directories found that needed to be merged.');
+    log.console.info('No similar directories found that needed to be merged.');
   }
 
   // Write results to JSON file using the utility function
@@ -194,6 +198,7 @@ function selectDirectoryToKeep(dirs: DirectoryInfo[]): DirectoryInfo {
 }
 
 function mergeDirectories(sourcePath: string, targetPath: string): void {
+  validateCleanupInProgress();
   // Make sure target directory exists
   if (!fs.existsSync(targetPath)) {
     fs.mkdirSync(targetPath, { recursive: true });
@@ -203,6 +208,7 @@ function mergeDirectories(sourcePath: string, targetPath: string): void {
   const items = fs.readdirSync(sourcePath);
 
   for (const item of items) {
+    validateCleanupInProgress();
     const sourceItemPath = path.join(sourcePath, item);
     const targetItemPath = path.join(targetPath, item);
     const stat = fs.statSync(sourceItemPath);

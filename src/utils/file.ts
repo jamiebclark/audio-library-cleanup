@@ -1,13 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { validateCleanupInProgress } from './cleanupState';
 import { log } from './logger';
-import { generateSpinner, ProgressBar, Spinner } from './progress';
+import { ProgressBar, Spinner } from './progress';
 
-export interface AudioFile {
-  path: string;
-  name: string;
-  size: number;
-  extension: string;
+export interface SharedCleanupOptions {
+  spinner?: Spinner;
+  progressTracker?: ProgressTracker;
 }
 
 export interface DirectoryInfo {
@@ -18,23 +17,17 @@ export interface DirectoryInfo {
   hasAccents: boolean;
 }
 
-export const AUDIO_EXTENSIONS = ['.mp3', '.flac', '.wav'];
-
-export function isAudioFile(filename: string): boolean {
-  const ext = path.extname(filename).toLowerCase();
-  return AUDIO_EXTENSIONS.includes(ext);
-}
-
 export function getFileSize(filePath: string): number {
   return fs.statSync(filePath).size;
 }
 
 // Get total count of items to process (for progress calculation)
-export function countItems(dirPath: string, onlyDirectories: boolean = false): number {
-  const isDirectory = fs.statSync(dirPath).isDirectory();
+export async function countItems(dirPath: string, onlyDirectories: boolean = false): Promise<number> {
+  validateCleanupInProgress();
+  const isDirectory = (await fs.promises.stat(dirPath)).isDirectory();
   let count = 0;
   try {
-    const items = fs.readdirSync(dirPath);
+    const items = await fs.promises.readdir(dirPath);
     if (onlyDirectories) {
       count += isDirectory ? 1 : 0;
     } else {
@@ -43,8 +36,9 @@ export function countItems(dirPath: string, onlyDirectories: boolean = false): n
 
     for (const item of items) {
       const fullPath = path.join(dirPath, item);
-      if (fs.statSync(fullPath).isDirectory()) {
-        count += countItems(fullPath, onlyDirectories);
+      if ((await fs.promises.stat(fullPath)).isDirectory()) {
+        validateCleanupInProgress();
+        count += await countItems(fullPath, onlyDirectories);
       }
     }
   } catch (error) {
@@ -72,7 +66,6 @@ export function traverseDirectory(
   if (!fs.existsSync(dirPath)) {
     const correctedPath = getCorrectCasePath(dirPath);
 
-    // If the corrected path exists but is different from the original path, log the correction
     if (fs.existsSync(correctedPath) && correctedPath !== dirPath) {
       log.info(`Corrected path case: ${dirPath} → ${correctedPath}`);
       dirPath = correctedPath;
@@ -85,9 +78,10 @@ export function traverseDirectory(
   // Update progress if tracker is provided
   options?.progressTracker?.update(dirPath);
 
+  // Check cleanup status
+  validateCleanupInProgress();
 
   try {
-    // Use withFileTypes to preserve original case
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
 
     for (const entry of entries) {
@@ -95,104 +89,20 @@ export function traverseDirectory(
       const stat = fs.statSync(fullPath);
       const isDirectory = entry.isDirectory();
 
-
-      // Call the callback with the item
+      validateCleanupInProgress();
       callback(fullPath, isDirectory, stat);
 
-      if (!options?.countDirectories || isDirectory) {
-        options?.progressTracker?.update(fullPath);
-      }
-
-      // Recursively traverse subdirectories
       if (isDirectory) {
         traverseDirectory(fullPath, callback, options);
+        validateCleanupInProgress();
+      } else if (!options?.countDirectories) {
+        // If not counting directories, update progress for files
+        options?.progressTracker?.update(fullPath);
       }
     }
   } catch (error) {
     log.error(`Error traversing directory ${dirPath}`);
   }
-}
-
-export function generateProgressTracker(totalItems: number, basePath: string, existingTracker?: ProgressTracker): ProgressTracker {
-  if (existingTracker) {
-    existingTracker.clear();
-    existingTracker.setTotalItems(totalItems);
-    existingTracker.setBasePath(basePath);
-    return existingTracker;
-  }
-  return new ProgressTracker(totalItems, basePath);
-}
-export class ProgressTracker {
-  private processedItems: number = 0;
-  private progressBar!: ProgressBar;
-  private basePath: string;
-
-  constructor(totalItems: number, basePath: string) {
-    this.basePath = basePath;
-    this.setTotalItems(totalItems);
-  }
-
-  update(currentPath: string): void {
-    this.processedItems++;
-    // Use relative path for cleaner output
-    const relativePath = path.relative(this.basePath, currentPath) || '.';
-    // Update the progress bar with current count and path
-    this.progressBar.update(this.processedItems, { task: relativePath });
-  }
-
-  clear(): void {
-    // Stop the progress bar (cleans up display)
-    this.progressBar.stop();
-    this.processedItems = 0;
-  }
-
-  setTotalItems(totalItems: number): void {
-    this.progressBar = new ProgressBar(
-      totalItems,
-      this.processedItems,
-      'Scanning: [{bar}] {percentage}% | {value}/{total} | {task}'
-    );
-  }
-
-  setBasePath(basePath: string): void {
-    this.basePath = basePath;
-  }
-}
-
-export function getAudioFilesInDirectory(dirPath: string, useProgressTracker?: ProgressTracker, useSpinner?: Spinner): AudioFile[] {
-  const files: AudioFile[] = [];
-
-  // Add spinner for counting items
-  const countingSpinner = generateSpinner('Counting items to process', useSpinner);
-  countingSpinner.start();
-
-  const totalItems = countItems(dirPath, false);
-
-  // Update spinner with count result
-  countingSpinner.succeed(`Get audio files: Found ${totalItems} files in directory, looking for audio files`);
-
-  const progressTracker = generateProgressTracker(totalItems, dirPath, useProgressTracker);
-
-  traverseDirectory(
-    dirPath,
-    (itemPath, isDirectory, stat) => {
-      // Only process audio files, not directories
-      if (!isDirectory && isAudioFile(path.basename(itemPath))) {
-        files.push({
-          path: itemPath,
-          name: path.parse(itemPath).name,
-          size: stat.size,
-          extension: path.extname(itemPath).toLowerCase()
-        });
-      }
-    },
-    { progressTracker }
-  );
-
-  countingSpinner.succeed(`Found ${files.length} audio files`);
-  progressTracker.clear();
-  log.success('Scanning complete!');
-  return files;
 }
 
 export function isDirectoryEmpty(dirPath: string): boolean {
@@ -211,74 +121,6 @@ export function isDirectoryEmpty(dirPath: string): boolean {
     log.error(`Error checking if directory is empty: ${dirPath}`, err);
     return false;
   }
-}
-
-export function hasAudioFilesRecursive(dirPath: string): boolean {
-  // Ensure we have the correct case path
-  dirPath = getCorrectCasePath(dirPath);
-
-  if (!fs.existsSync(dirPath)) {
-    log.error(`Directory does not exist (in hasAudioFilesRecursive): ${dirPath}`);
-    return false;
-  }
-
-  try {
-    // First check if this directory itself has audio files
-    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-    const hasAudioInCurrentDir = entries.some(entry => {
-      try {
-        return !entry.isDirectory() && isAudioFile(entry.name);
-      } catch (err) {
-        return false;
-      }
-    });
-
-    if (hasAudioInCurrentDir) {
-      return true;
-    }
-
-    // Then check subdirectories
-    // Convert to a set of lowercase names to detect duplicate folders with different casing
-    const normalizedSubdirs = new Set<string>();
-    const subdirMap: Record<string, string> = {};
-
-    // Build a map of lowercase names to actual names
-    for (const entry of entries) {
-      try {
-        if (entry.isDirectory()) {
-          const lowerItem = entry.name.toLowerCase();
-          normalizedSubdirs.add(lowerItem);
-          subdirMap[lowerItem] = entry.name;
-        }
-      } catch (err) {
-        // Skip items that can't be accessed
-      }
-    }
-
-    // Check each unique subdirectory (ensures we don't miss due to case differences)
-    for (const normalizedSubdir of normalizedSubdirs) {
-      const actualSubdir = subdirMap[normalizedSubdir];
-      const subdirPath = path.join(dirPath, actualSubdir);
-
-      try {
-        // Recursive check
-        if (hasAudioFilesRecursive(subdirPath)) {
-          return true;
-        }
-      } catch (err) {
-        log.error(`Error checking subdirectory ${subdirPath}:`, err);
-      }
-    }
-  } catch (err) {
-    log.error(`Error reading directory ${dirPath}:`, err);
-  }
-
-  return false;
-}
-
-export function hasAudioFiles(dirPath: string): boolean {
-  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-  return entries.some(entry => !entry.isDirectory() && isAudioFile(entry.name));
 }
 
 export function deleteFile(filePath: string): void {
@@ -448,16 +290,51 @@ export function isDirectoryTrulyEmpty(dirPath: string): boolean {
   }
 }
 
-export function writeScriptResults(scriptName: string, resultsData: Record<string, number>): void {
-  const outputDir = path.join('output');
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
+// Restoring ProgressTracker and generateProgressTracker
+export class ProgressTracker {
+  private processedItems: number = 0;
+  private progressBar!: ProgressBar; // Uses ProgressBar from ./progress
+  private basePath: string;
+
+  constructor(totalItems: number, basePath: string) {
+    this.basePath = basePath;
+    this.setTotalItems(totalItems);
   }
 
-  // Get the filename from the scriptName (e.g. cleanupDirectories.ts -> cleanupDirectories)
-  const baseName = path.basename(scriptName, '.ts');
-  const outputFileName = `${baseName}.json`;
-  const outputFilePath = path.join(outputDir, outputFileName);
-  fs.writeFileSync(outputFilePath, JSON.stringify(resultsData, null, 2));
-  log.info(`Results saved to ${outputFilePath}`);
+  update(currentPath: string): ProgressTracker {
+    this.processedItems++;
+    const relativePath = path.relative(this.basePath, currentPath) || '.';
+    this.progressBar.update(this.processedItems, { task: relativePath });
+    return this;
+  }
+
+  clear(): ProgressTracker {
+    this.progressBar.stop();
+    this.processedItems = 0;
+    return this;
+  }
+
+  setTotalItems(totalItems: number): ProgressTracker {
+    this.progressBar = new ProgressBar(
+      totalItems,
+      this.processedItems,
+      'Scanning: [{bar}] {percentage}% | {value}/{total} | {task}'
+    );
+    return this;
+  }
+
+  setBasePath(basePath: string): ProgressTracker {
+    this.basePath = basePath;
+    return this;
+  }
 }
+
+export function generateProgressTracker(totalItems: number, basePath: string, existingTracker?: ProgressTracker): ProgressTracker {
+  if (existingTracker) {
+    existingTracker.clear();
+    existingTracker.setTotalItems(totalItems);
+    existingTracker.setBasePath(basePath);
+    return existingTracker;
+  }
+  return new ProgressTracker(totalItems, basePath);
+} 

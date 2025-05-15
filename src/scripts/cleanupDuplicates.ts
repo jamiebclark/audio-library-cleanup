@@ -1,37 +1,38 @@
 import * as path from 'path';
+import { AudioFile, getAudioFilesInDirectory } from '../utils/audio';
+import { validateCleanupInProgress } from '../utils/cleanupState';
 import {
-  AudioFile,
   deleteFile,
   generateProgressTracker,
-  getAudioFilesInDirectory,
-  ProgressTracker,
   renameFile,
-  writeScriptResults
-} from '../utils/fileUtils';
-import { readableFileSize } from '../utils/formatUtils';
+  SharedCleanupOptions
+} from '../utils/file';
+import { readableFileSize } from '../utils/format';
 import { log } from '../utils/logger';
 import { generateSpinner, Spinner } from '../utils/progress';
+import { writeScriptResults } from '../utils/script';
 
 export async function cleanupDuplicates(
   directory: string,
   dryRun: boolean,
-  options?: {
-    spinner?: Spinner,
-    progressTracker?: ProgressTracker
-  }
+  options?: SharedCleanupOptions
 ) {
   log.console.header('Cleanup duplicates');
 
-  const scanningSpinner = generateSpinner('Scanning for audio files', options?.spinner);
-  const files = getAudioFilesInDirectory(directory, options?.progressTracker, scanningSpinner);
+  const spinner = generateSpinner('Scanning for audio files', options?.spinner);
+  const progressTracker = generateProgressTracker(0, directory, options?.progressTracker);
+  const files = await getAudioFilesInDirectory(directory, progressTracker, spinner);
+
+  validateCleanupInProgress();
   log.info(`Cleanup duplicates: Found ${files.length} audio files`);
 
   // Group files by their parent directory path and then by base name
   const filesByDirectory = new Map<string, Map<string, AudioFile[]>>();
 
-  const groupingSpinner = generateSpinner('Grouping files by directory and name', options?.spinner);
+  spinner.start('Grouping files by directory and name')
 
   files.forEach(file => {
+    validateCleanupInProgress();
     const parentDir = path.dirname(file.path);
     const baseName = file.name.replace(/\(\d+\)$/, '').trim();
 
@@ -51,7 +52,7 @@ export async function cleanupDuplicates(
     dirMap.get(baseName)!.push(file);
   });
 
-  groupingSpinner.succeed(`Grouped files across ${filesByDirectory.size} directories`);
+  spinner.succeed(`Grouped files across ${filesByDirectory.size} directories`);
   log.info(`Grouped files across ${filesByDirectory.size} directories`);
 
   let totalDuplicatesFound = 0;
@@ -60,11 +61,12 @@ export async function cleanupDuplicates(
   let filesRenamed = 0;
 
   // Create progress bar for processing directories
-  const progressTracker = generateProgressTracker(filesByDirectory.size, directory, options?.progressTracker);
+  progressTracker.clear().setTotalItems(filesByDirectory.size)
   let processedDirs = 0;
 
   // Process exact duplicates by directory
   for (const [dirPath, dirMap] of filesByDirectory) {
+    validateCleanupInProgress();
     const relativeDirPath = path.relative(directory, dirPath);
     let dirDuplicatesFound = false;
 
@@ -73,6 +75,7 @@ export async function cleanupDuplicates(
     progressTracker.update(relativeDirPath);
 
     for (const [baseName, fileGroup] of dirMap) {
+      validateCleanupInProgress();
       if (fileGroup.length > 1) {
         if (!dirDuplicatesFound) {
           dirDuplicatesFound = true;
@@ -92,6 +95,7 @@ export async function cleanupDuplicates(
         log.success(`Keeping: ${path.basename(keepFile.path)} (${readableFileSize(keepFile.size)})`);
 
         for (const file of deleteFiles) {
+          validateCleanupInProgress();
           if (dryRun) {
             log.dryRun(`Would delete: ${path.basename(file.path)} (${readableFileSize(file.size)})`);
             duplicateFilesDeleted++;
