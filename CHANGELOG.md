@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/jamiebclark/audio-library-cleanup/compare/v1.2.0...v1.3.0) (2025-05-15)
+
+
+### Features
+
+* enhance cleanup commands with interruption handling and refactor utilities ([91f7462](https://github.com/jamiebclark/audio-library-cleanup/commit/91f74624e23831e448cce1843aba66fd3f79f0d7))
+
 # [1.2.0](https://github.com/jamiebclark/audio-library-cleanup/compare/v1.1.0...v1.2.0) (2025-05-15)
 
 
