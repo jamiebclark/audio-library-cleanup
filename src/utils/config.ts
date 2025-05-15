@@ -6,6 +6,15 @@ import { log } from './logger';
 // Load environment variables from .env file
 dotenv.config();
 
+/**
+ * Determines the audio directory to be used for cleanup operations.
+ * It prioritizes the directory specified as an argument, then falls back to the
+ * AUDIO_LIBRARY_PATH environment variable.
+ * 
+ * @param specifiedDir - An optional directory path provided directly.
+ * @returns The resolved audio directory path.
+ * @throws Error if no directory is specified and the environment variable is not set.
+ */
 export function getAudioDirectory(specifiedDir?: string): string {
   if (specifiedDir) {
     return specifiedDir;
@@ -22,7 +31,11 @@ export function getAudioDirectory(specifiedDir?: string): string {
 }
 
 /**
- * Get configuration from environment variables
+ * Retrieves application configuration settings from environment variables.
+ * 
+ * @returns An object containing configuration properties:
+ *  - `audioLibraryPath`: The path to the audio library (from `AUDIO_LIBRARY_PATH`).
+ *  - `dryRun`: A boolean indicating if dry run mode is enabled (from `DRY_RUN`).
  */
 export function getConfig() {
   return {

@@ -117,6 +117,15 @@ async function handleCaseSensitiveDirectory(
   }
 }
 
+/**
+ * Cleans up empty directories and directories that only contain empty subdirectories or non-media files.
+ * It also handles directories with case-sensitivity conflicts (e.g., "Folder" and "folder" in the same location)
+ * by attempting to rename them uniquely, checking for emptiness, and then restoring original names if not empty.
+ *
+ * @param directory - The root directory to scan.
+ * @param dryRun - If true, only logs actions without performing them.
+ * @param options - Shared cleanup options like spinner and progress tracker.
+ */
 export async function cleanupEmptyDirs(
   directory: string,
   dryRun: boolean,

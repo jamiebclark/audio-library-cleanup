@@ -11,6 +11,13 @@ program
   .description('Find and remove duplicate audio files')
   .argument('[directory]', 'directory to scan (defaults to AUDIO_LIBRARY_PATH environment variable)')
   .option('-d, --dry-run', 'show what would be deleted without actually deleting')
+  /**
+   * Action handler for the cleanup-duplicates command.
+   * Retrieves the audio directory and calls the cleanupDuplicates script.
+   *
+   * @param directory - Optional directory path from the command line.
+   * @param options - Command line options, including dryRun.
+   */
   .action(async (directory: string | undefined, options: { dryRun: boolean }) => {
     const audioDir = getAudioDirectory(directory);
     log.info(`Using directory: ${audioDir}`);

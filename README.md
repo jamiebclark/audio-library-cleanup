@@ -142,13 +142,14 @@ yarn cleanup --skip-directories
 
 ## Directory Fuzzy Matching
 
-The directory fuzzy matching functionality helps you combine directories that represent the same content but have slightly different names, such as:
+The directory fuzzy matching functionality helps you combine directories that represent the same content but have slightly different names. This matching process occurs within shared parent directories (typically an artist's album folder) to ensure that, for example, 'Greatest Hits' from Artist A isn't merged with 'Greatest Hits' from Artist B.
 
-- Different spellings: "The Beatles" and "The Beetles"
-- Different formats: "Pink Floyd" and "Pink_Floyd"
-- Symbol variations: "AC/DC" and "AC-DC"
+Examples of what it can help consolidate:
+
+- Different spellings or casing: "the beatles" and "The Beatles"
 - Ampersand vs "and": "Hall & Oates" and "Hall and Oates"
 - With or without accents: "Björk" and "Bjork"
+- Variations in spacing: "Artist Name" and "Artist  Name"
 
 When matching directories, the following priority is used to determine which version to keep:
 

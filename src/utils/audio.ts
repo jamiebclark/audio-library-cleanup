@@ -7,6 +7,11 @@ import { generateSpinner, Spinner } from './progress';
 
 export const AUDIO_EXTENSIONS = ['.mp3', '.flac', '.wav'];
 
+/**
+ * Checks if a filename has a common audio file extension.
+ * @param filename - The name of the file to check.
+ * @returns True if the file is recognized as an audio file, false otherwise.
+ */
 export function isAudioFile(filename: string): boolean {
   const ext = path.extname(filename).toLowerCase();
   return AUDIO_EXTENSIONS.includes(ext);
@@ -20,6 +25,15 @@ export interface AudioFile {
   extension: string;
 }
 
+/**
+ * Recursively finds all audio files in a directory and its subdirectories.
+ * It uses a progress tracker and spinner to provide feedback during the scan.
+ * 
+ * @param dirPath - The root directory to scan for audio files.
+ * @param useProgressTracker - Optional existing progress tracker to use.
+ * @param useSpinner - Optional existing spinner to use.
+ * @returns A promise that resolves to an array of AudioFile objects.
+ */
 export async function getAudioFilesInDirectory(dirPath: string, useProgressTracker?: ProgressTracker, useSpinner?: Spinner): Promise<AudioFile[]> {
   const files: AudioFile[] = [];
 
@@ -55,6 +69,13 @@ export async function getAudioFilesInDirectory(dirPath: string, useProgressTrack
   return files;
 }
 
+/**
+ * Recursively checks if a directory or any of its subdirectories contain audio files.
+ * It handles case-insensitive file systems by correcting path casing.
+ * 
+ * @param dirPath - The directory path to check.
+ * @returns True if audio files are found, false otherwise.
+ */
 export function hasAudioFilesRecursive(dirPath: string): boolean {
   // Ensure we have the correct case path
   dirPath = getCorrectCasePath(dirPath);
@@ -118,6 +139,11 @@ export function hasAudioFilesRecursive(dirPath: string): boolean {
   return false;
 }
 
+/**
+ * Checks if a directory directly contains any audio files (non-recursive).
+ * @param dirPath - The directory path to check.
+ * @returns True if audio files are found directly in the directory, false otherwise.
+ */
 export function hasAudioFiles(dirPath: string): boolean {
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
   return entries.some(entry => !entry.isDirectory() && isAudioFile(entry.name));

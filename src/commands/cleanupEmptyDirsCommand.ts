@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { cleanupEmptyDirs } from '../scripts/cleanupEmptyDirs';
 import { getAudioDirectory } from '../utils/config';
-import { ProgressTracker } from '../utils/fileUtils';
+import { ProgressTracker } from '../utils/file';
 import { log } from '../utils/logger';
 import { Spinner } from '../utils/progress';
 
@@ -13,6 +13,13 @@ program
   .argument('[directory]', 'directory to scan (defaults to AUDIO_LIBRARY_PATH environment variable)')
   .option('-d, --dry-run', 'show what would be deleted without actually deleting')
   .option('-s, --skip-config <path>', 'path to a JSON file with directories to skip')
+  /**
+   * Action handler for the cleanup-empty-dirs command.
+   * Retrieves the audio directory, sets skip config if provided, and calls the cleanupEmptyDirs script.
+   *
+   * @param directory - Optional directory path from the command line.
+   * @param options - Command line options, including dryRun and skipConfig.
+   */
   .action(async (directory: string | undefined, options: { dryRun: boolean, skipConfig?: string }) => {
     // Set environment variable if skip config is provided
     if (options.skipConfig) {

@@ -2,6 +2,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { log } from './logger';
 
+/**
+ * Writes the results of a script to a JSON file in the 'output' directory.
+ * The filename is derived from the script name.
+ * 
+ * @param scriptName - The name of the script that was run (e.g., 'cleanupDuplicates.ts').
+ * @param resultsData - An object containing the results to be written to the JSON file.
+ */
 export function writeScriptResults(scriptName: string, resultsData: Record<string, number>): void {
   const outputDir = path.join('output');
   if (!fs.existsSync(outputDir)) {

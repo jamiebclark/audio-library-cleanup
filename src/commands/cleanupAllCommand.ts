@@ -9,6 +9,11 @@ import { ProgressTracker } from '../utils/file';
 import { log } from '../utils/logger';
 import { generateSpinner, Spinner } from '../utils/progress';
 
+/**
+ * Handles SIGINT (Ctrl+C) to gracefully shut down the cleanup process.
+ * It sets the cleanupInProgress flag to false, allowing ongoing operations to complete
+ * before exiting.
+ */
 // Gracefully handle Ctrl+C
 process.on('SIGINT', () => {
   log.warning('\nGracefully shutting down... Please wait for the current operation to complete.');
@@ -31,6 +36,14 @@ program
   .option('--skip-mp3-flac', 'skip MP3/FLAC cleanup')
   .option('--skip-empty-dirs', 'skip empty directory cleanup')
   .option('--skip-directories', 'skip similar directory name cleanup')
+  /**
+   * Action handler for the main cleanup command.
+   * It initializes the cleanup process, gets the target audio directory,
+   * and then calls runCleanupTasks to perform the actual cleanup operations.
+   *
+   * @param directory - Optional directory path from command line.
+   * @param options - Command line options.
+   */
   .action(async (directory: string | undefined, options: {
     dryRun: boolean,
     skipDuplicates: boolean,
@@ -50,6 +63,11 @@ program
       runCleanupTasks();
     }, 500);
 
+    /**
+     * Executes all configured cleanup tasks sequentially.
+     * It uses a shared spinner and progress tracker for all tasks.
+     * Handles errors and interruptions gracefully.
+     */
     // Main function to run all cleanup tasks
     async function runCleanupTasks() {
       setCleanupInProgress(true);

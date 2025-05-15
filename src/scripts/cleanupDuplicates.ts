@@ -12,6 +12,15 @@ import { log } from '../utils/logger';
 import { generateSpinner, Spinner } from '../utils/progress';
 import { writeScriptResults } from '../utils/script';
 
+/**
+ * Finds and removes duplicate audio files in a directory.
+ * It groups files by directory and base name, then keeps the largest file in each duplicate group.
+ * Also handles renaming files with numeric suffixes (e.g., "Song (1).mp3") after duplicates are removed.
+ *
+ * @param directory - The root directory to scan for duplicates.
+ * @param dryRun - If true, only logs actions without performing them.
+ * @param options - Shared cleanup options like spinner and progress tracker.
+ */
 export async function cleanupDuplicates(
   directory: string,
   dryRun: boolean,

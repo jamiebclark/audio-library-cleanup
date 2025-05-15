@@ -10,6 +10,14 @@ import { log } from '../utils/logger';
 import { generateSpinner, ProgressBar, Spinner } from '../utils/progress';
 import { writeScriptResults } from '../utils/script';
 
+/**
+ * Cleans up MP3 files when a corresponding FLAC file exists in the same directory
+ * with the same base name.
+ *
+ * @param directory - The root directory to scan.
+ * @param dryRun - If true, only logs actions without performing them.
+ * @param options - Shared cleanup options like spinner and progress tracker.
+ */
 export async function cleanupMp3Flac(
   directory: string,
   dryRun: boolean,
