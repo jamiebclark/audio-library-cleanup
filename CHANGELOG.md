@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/jamiebclark/audio-library-cleanup/compare/v1.1.0...v1.2.0) (2025-05-15)
+
+
+### Features
+
+* update cleanup scripts and logging enhancements ([0c18dd4](https://github.com/jamiebclark/audio-library-cleanup/commit/0c18dd4b92160549a6c5b5445d9511d7b3957631))
+
 # [1.1.0](https://github.com/jamiebclark/audio-library-cleanup/compare/v1.0.0...v1.1.0) (2025-05-13)
 
 
