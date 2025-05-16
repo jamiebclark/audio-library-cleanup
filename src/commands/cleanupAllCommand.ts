@@ -52,16 +52,13 @@ program
     skipDirectories: boolean
   }) => {
     const audioDir = getAudioDirectory(directory);
-    log.info('Starting audio library cleanup...');
+    log.console.info('Starting audio library cleanup...');
 
     // Create a initial spinner for directory setup
     const setupSpinner = generateSpinner(`Scanning directory: ${audioDir}`);
 
-    // Wait a moment and mark this step as complete
-    setTimeout(() => {
-      setupSpinner.succeed(`Using directory: ${audioDir}`);
-      runCleanupTasks();
-    }, 500);
+    setupSpinner.succeed(`Using directory: ${audioDir}`);
+    runCleanupTasks();
 
     /**
      * Executes all configured cleanup tasks sequentially.
@@ -74,7 +71,6 @@ program
       // Create a shared spinner and progress tracker to reuse across all cleanup functions
       const spinner = new Spinner('Audio Library Cleanup');
       const progressTracker = new ProgressTracker(0, audioDir);
-      progressTracker.clear();
 
       try {
         // Show dry run warning if applicable
