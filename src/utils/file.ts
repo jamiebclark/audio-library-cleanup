@@ -154,7 +154,7 @@ export function deleteFile(filePath: string): void {
  * @param dirPath - The path to the directory to delete.
  */
 export function deleteDirectory(dirPath: string): void {
-  fs.rmdirSync(dirPath, { recursive: true });
+  fs.rmSync(dirPath, { recursive: true, force: true });
 }
 
 /**

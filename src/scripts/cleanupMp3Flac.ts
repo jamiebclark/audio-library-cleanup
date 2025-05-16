@@ -3,11 +3,12 @@ import { AudioFile, getAudioFilesInDirectory } from '../utils/audio';
 import { validateCleanupInProgress } from '../utils/cleanupState';
 import {
   deleteFile,
+  normalizeForFuzzyMatching,
   SharedCleanupOptions
 } from '../utils/file';
 import { readableFileSize } from '../utils/format';
 import { log } from '../utils/logger';
-import { generateSpinner, ProgressBar, Spinner } from '../utils/progress';
+import { generateSpinner, ProgressBar } from '../utils/progress';
 import { writeScriptResults } from '../utils/script';
 
 /**
@@ -37,7 +38,7 @@ export async function cleanupMp3Flac(
   files.forEach(file => {
     validateCleanupInProgress();
     const parentDir = path.dirname(file.path);
-    const baseName = file.name.replace(/\(\d+\)$/, '').trim();
+    const baseName = normalizeForFuzzyMatching(file.name.replace(/\(\d+\)$/, ''));
 
     // Create map for this directory if it doesn't exist
     if (!filesByDirectory.has(parentDir)) {
@@ -96,10 +97,7 @@ export async function cleanupMp3Flac(
             log.dryRun(`Would delete MP3: ${path.basename(mp3File.path)} (${readableFileSize(mp3File.size)})`);
             changesCount++;
           } else {
-            const deleteSpinner = new Spinner(`Deleting MP3: ${path.basename(mp3File.path)} (${readableFileSize(mp3File.size)})`);
-            deleteSpinner.start();
             deleteFile(mp3File.path);
-            deleteSpinner.succeed('Deleted');
             changesCount++;
           }
         }

@@ -52,7 +52,7 @@ program
     skipDirectories: boolean
   }) => {
     const audioDir = getAudioDirectory(directory);
-    log.console.info('Starting audio library cleanup...');
+    log.console.header('Starting audio library cleanup...');
 
     // Create a initial spinner for directory setup
     const setupSpinner = generateSpinner(`Scanning directory: ${audioDir}`);

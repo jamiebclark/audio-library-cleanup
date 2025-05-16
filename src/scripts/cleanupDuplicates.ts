@@ -9,7 +9,7 @@ import {
 } from '../utils/file';
 import { readableFileSize } from '../utils/format';
 import { log } from '../utils/logger';
-import { generateSpinner, Spinner } from '../utils/progress';
+import { generateSpinner } from '../utils/progress';
 import { writeScriptResults } from '../utils/script';
 
 /**
@@ -109,10 +109,7 @@ export async function cleanupDuplicates(
             log.dryRun(`Would delete: ${path.basename(file.path)} (${readableFileSize(file.size)})`);
             duplicateFilesDeleted++;
           } else {
-            const deleteSpinner = new Spinner(`Deleting: ${path.basename(file.path)} (${readableFileSize(file.size)})`);
-            deleteSpinner.start();
             deleteFile(file.path);
-            deleteSpinner.succeed('Deleted');
             log.info(`Deleted: ${path.basename(file.path)} (${readableFileSize(file.size)})`);
             duplicateFilesDeleted++;
           }
@@ -128,14 +125,10 @@ export async function cleanupDuplicates(
             log.dryRun(`Would rename: ${path.basename(keepFile.path)} → ${path.basename(newFilePath)}`);
             filesRenamed++;
           } else {
-            const renameSpinner = new Spinner(`Renaming: ${path.basename(keepFile.path)} → ${path.basename(newFilePath)}`);
-            renameSpinner.start();
             if (renameFile(keepFile.path, newFilePath)) {
-              renameSpinner.succeed('Renamed');
               log.info(`Renamed: ${path.basename(keepFile.path)} → ${path.basename(newFilePath)}`);
               filesRenamed++;
             } else {
-              renameSpinner.fail('Failed to rename');
               log.error(`Failed to rename: ${path.basename(keepFile.path)} → ${path.basename(newFilePath)}`);
             }
           }

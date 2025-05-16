@@ -2,15 +2,19 @@ import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as winston from 'winston';
+import DailyRotateFile from 'winston-daily-rotate-file';
 
 // Path to the log file
-const logFilePath = path.resolve(process.cwd(), 'output.log');
+const outputDir = path.join(process.cwd(), 'output', 'logs');
+const logFilePath = path.join(outputDir, 'output.log');
 
-// Clear the log file on startup
+// Ensure output directory exists
 try {
-  fs.writeFileSync(logFilePath, '');
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
 } catch (error) {
-  console.error('Failed to clear log file:', error);
+  console.error('Failed to setup logs directory:', error);
 }
 
 // Configure winston logger
@@ -23,7 +27,13 @@ const logger = winston.createLogger({
     })
   ),
   transports: [
-    new winston.transports.File({ filename: logFilePath }),
+    new DailyRotateFile({
+      filename: path.join(outputDir, 'output-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      maxSize: '5m',
+      maxFiles: '5d',
+      zippedArchive: true
+    })
   ],
   silent: process.env.NODE_ENV === 'test',
 });

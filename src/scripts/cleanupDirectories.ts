@@ -137,17 +137,32 @@ export async function cleanupDirectories(
 
         dirGroup.forEach(dir => {
           validateCleanupInProgress();
+          // Skip if directory no longer exists
+          if (!fs.existsSync(dir.path)) {
+            log.info(`Skipping ${dir.name} - directory no longer exists`);
+            return;
+          }
           log.info(`- ${dir.name} (${dir.path})`);
           log.info(`  Subfolders: ${dir.subfolderCount}, Modified: ${dir.lastModified.toISOString()}, Has accents: ${dir.hasAccents}`);
         });
 
         // Apply priority rules to select which directory to keep
         const dirToKeep = selectDirectoryToKeep(dirGroup);
+        // Verify the selected directory still exists
+        if (!fs.existsSync(dirToKeep.path)) {
+          log.warn(`Selected directory ${dirToKeep.name} no longer exists, skipping group`);
+          continue;
+        }
         log.success(`Keeping: ${dirToKeep.name} (${dirToKeep.path})`);
 
         // Move content from other dirs to the kept dir and delete them
         for (const dir of dirGroup) {
           validateCleanupInProgress();
+          // Skip if directory no longer exists
+          if (!fs.existsSync(dir.path)) {
+            log.info(`Skipping ${dir.name} - directory no longer exists`);
+            continue;
+          }
           if (dir.path !== dirToKeep.path) {
             if (dryRun) {
               log.dryRun(`Would merge and delete: ${dir.name} (${dir.path})`);
@@ -236,5 +251,5 @@ function mergeDirectories(sourcePath: string, targetPath: string): void {
   }
 
   // Delete the source directory after merging
-  fs.rmdirSync(sourcePath, { recursive: true });
+  fs.rmSync(sourcePath, { recursive: true, force: true });
 } 
