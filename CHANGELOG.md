@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/jamiebclark/audio-library-cleanup/compare/v1.3.0...v1.4.0) (2025-05-16)
+
+
+### Features
+
+* add daily rotation logging and improve cleanup scripts ([702ad5b](https://github.com/jamiebclark/audio-library-cleanup/commit/702ad5bcc96f3a4e5f4a56d19d5fc631f879293d))
+
 # [1.3.0](https://github.com/jamiebclark/audio-library-cleanup/compare/v1.2.0...v1.3.0) (2025-05-15)
 
 
